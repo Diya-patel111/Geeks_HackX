@@ -57,11 +57,26 @@ export function AuthProvider({ children }) {
     let cancelled = false;
     authService.getMe()
       .then((user) => {
-        if (!cancelled) dispatch({ type: AUTH_ACTIONS.SET_USER, payload: user });
+        if (!cancelled) {
+          dispatch({ type: AUTH_ACTIONS.SET_USER, payload: user });
+
+          // ─ Silently push GPS so the backend can send 10-km proximity notifications
+          // when any user nearby reports an issue.  Best-effort — never shows UI.
+          if (navigator?.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              ({ coords }) => {
+                authService.updateLocation({
+                  lat: coords.latitude,
+                  lng: coords.longitude,
+                }).catch(() => {}); // ignore network errors
+              },
+              () => {} // ignore permission-denied / unavailable
+            );
+          }
+        }
       })
       .catch((err) => {
         if (!cancelled) {
-          // 401 = not logged in (expected).  Any other status = unexpected server issue.
           if (err?.status !== 401) {
             console.error('[AuthContext] Unexpected error during session restore:', err.message);
           }
@@ -103,12 +118,17 @@ export function AuthProvider({ children }) {
 
   /**
    * Update profile fields (name, avatar, location).
-   * Uses UPDATE_USER so unrelated fields aren't clobbered.
+   * After a successful PATCH, re-fetches the user from the server so the
+   * frontend always reflects the definitive saved state (e.g. the new
+   * Cloudinary avatar URL).  Using SET_USER replaces the full user object
+   * rather than merging, which avoids any stale-field edge cases.
    */
   const updateProfile = useCallback(async (data) => {
-    const updated = await authService.updateProfile(data);
-    dispatch({ type: AUTH_ACTIONS.UPDATE_USER, payload: updated });
-    return updated;
+    await authService.updateProfile(data);
+    // Re-fetch to get the authoritative server-side user (incl. new avatar URL)
+    const freshUser = await authService.getMe();
+    dispatch({ type: AUTH_ACTIONS.SET_USER, payload: freshUser });
+    return freshUser;
   }, []);
 
   /**

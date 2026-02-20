@@ -5,9 +5,10 @@ const cloudinary = require('../config/cloudinary');
  * @param {Buffer} buffer
  * @param {string} folder
  * @param {string} [publicId]
+ * @param {string} [mimetype]  — MIME type of the file (e.g. 'image/png')
  */
-const uploadBuffer = async (buffer, folder, publicId) => {
-  const b64 = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+const uploadBuffer = async (buffer, folder, publicId, mimetype = 'image/jpeg') => {
+  const b64 = `data:${mimetype};base64,${buffer.toString('base64')}`;
   const result = await cloudinary.uploader.upload(b64, {
     folder,
     public_id: publicId,

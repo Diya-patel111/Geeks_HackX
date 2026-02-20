@@ -94,4 +94,13 @@ export const authService = {
   loginWithGoogle: () => {
     window.location.href = GOOGLE_AUTH_URL;
   },
+
+  /**
+   * Silently save the user's GPS coordinates so the backend can send
+   * 'new_issue_nearby' notifications when an issue is reported within 10 km.
+   * @param {{ lat: number, lng: number }} coords
+   */
+  updateLocation: async ({ lat, lng }) => {
+    await api.patch('/users/me/location', { lat, lng });
+  },
 };

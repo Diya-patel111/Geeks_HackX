@@ -1,11 +1,34 @@
 const Issue = require('../models/Issue');
+const User  = require('../models/User');
+const ApiError    = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 
-// ─── Projection reused for list views ─────────────────────────────────────────
+// ─── Projection reused for list views ─────────────────────────────────────────────────
 const LIST_PROJECTION =
   'title category status location.coordinates location.address location.city location.ward ' +
   'image likeCount verificationCount averageSeverity createdAt createdBy';
+
+// ─── PATCH /api/v1/users/me/location ────────────────────────────────────────────
+exports.updateMyLocation = asyncHandler(async (req, res) => {
+  const { lat, lng } = req.body;
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+    throw new ApiError(400, 'lat and lng must be finite numbers.');
+  }
+  if (lngNum < -180 || lngNum > 180) throw new ApiError(400, 'Longitude must be −180 to 180.');
+  if (latNum < -90  || latNum > 90)  throw new ApiError(400, 'Latitude must be −90 to 90.');
+
+  await User.findByIdAndUpdate(req.user._id, {
+    'location.type': 'Point',
+    'location.coordinates': [lngNum, latNum],
+  });
+
+  res.status(200).json(new ApiResponse(200, null, 'Location updated.'));
+});
+
 
 // ─── GET /api/v1/users/me/stats ───────────────────────────────────────────────
 exports.getMyStats = asyncHandler(async (req, res) => {

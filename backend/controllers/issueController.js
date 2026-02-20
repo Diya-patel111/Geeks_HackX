@@ -101,6 +101,9 @@ exports.createIssue = asyncHandler(async (req, res) => {
     title: issue.title,
   });
 
+  // ── Notify users within 10 km (fire-and-forget — never blocks response)
+  notificationService.notifyNearbyUsers(issue, 10).catch(() => {});
+
   res.status(201).json(new ApiResponse(201, issue, 'Issue reported successfully.'));
 });
 

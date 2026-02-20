@@ -78,12 +78,11 @@ exports.updateProfile = asyncHandler(async (req, res) => {
 
   // Handle avatar file upload via Cloudinary
   if (req.file) {
-    // Use a timestamped public_id so each upload gets a unique Cloudinary URL.
-    // This prevents the browser from serving a stale cached version of the old photo.
     const { url, publicId } = await uploadBuffer(
       req.file.buffer,
       'avatars',
-      `user_${req.user._id}_${Date.now()}`
+      `user_${req.user._id}_${Date.now()}`,
+      req.file.mimetype
     );
     updates.avatar = { url, publicId };
   }

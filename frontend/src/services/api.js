@@ -26,6 +26,16 @@ api.interceptors.request.use(
     if (_inMemoryToken) {
       config.headers.Authorization = `Bearer ${_inMemoryToken}`;
     }
+    // When sending FormData, DELETE the Content-Type header entirely so the
+    // browser sets it automatically as multipart/form-data with the correct
+    // boundary. The axios instance default ('application/json') would otherwise
+    // override it and break multer parsing on the server.
+    // Delete both casings — axios v1's AxiosHeaders normalises to lowercase
+    // internally, so deleting only 'Content-Type' may leave 'content-type'.
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
