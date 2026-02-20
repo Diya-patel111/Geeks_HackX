@@ -2,6 +2,7 @@ const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
+const { uploadBuffer } = require('../services/cloudinaryService');
 const {
   generateToken,
   setTokenCookie,
@@ -70,11 +71,26 @@ exports.getMe = asyncHandler(async (req, res) => {
 
 // ─── Update Profile ───────────────────────────────────────────────────────────
 exports.updateProfile = asyncHandler(async (req, res) => {
-  const ALLOWED = ['name', 'avatar', 'location'];
   const updates = {};
-  ALLOWED.forEach((field) => {
-    if (req.body[field] !== undefined) updates[field] = req.body[field];
-  });
+
+  if (req.body.name      !== undefined) updates.name         = req.body.name;
+  if (req.body.locationName !== undefined) updates.locationName = req.body.locationName;
+
+  // Handle avatar file upload via Cloudinary
+  if (req.file) {
+    // Use a timestamped public_id so each upload gets a unique Cloudinary URL.
+    // This prevents the browser from serving a stale cached version of the old photo.
+    const { url, publicId } = await uploadBuffer(
+      req.file.buffer,
+      'avatars',
+      `user_${req.user._id}_${Date.now()}`
+    );
+    updates.avatar = { url, publicId };
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(200).json(new ApiResponse(200, req.user.toPublicJSON(), 'No changes made.'));
+  }
 
   const user = await User.findByIdAndUpdate(req.user._id, updates, {
     new: true,

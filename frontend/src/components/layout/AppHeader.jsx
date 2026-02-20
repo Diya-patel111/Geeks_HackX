@@ -73,8 +73,8 @@ export default function AppHeader({
           to="/profile"
           className="h-10 w-10 rounded-full border-2 border-[#1e3b8a]/20 bg-[#1e3b8a]/10 flex items-center justify-center overflow-hidden"
         >
-          {user?.avatar ? (
-            <img src={user.avatar} alt="Profile" className="h-full w-full object-cover" />
+          {user?.avatar?.url ? (
+            <img src={user.avatar.url} alt="Profile" className="h-full w-full object-cover" />
           ) : (
             <span className="text-[#1e3b8a] text-xs font-bold uppercase">
               {user?.name?.[0] ?? 'U'}

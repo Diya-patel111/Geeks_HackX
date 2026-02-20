@@ -38,6 +38,14 @@ const userSchema = new mongoose.Schema(
       publicId: { type: String, default: '' },
     },
 
+    // Human-readable city/area name for display (separate from geo coordinates)
+    locationName: {
+      type: String,
+      trim: true,
+      maxlength: [120, 'Location name cannot exceed 120 characters'],
+      default: '',
+    },
+
     // GeoJSON Point — 2dsphere indexed below
     location: {
       type: {

@@ -63,12 +63,30 @@ function Modal({ title, onClose, children }) {
 
 /* ── Edit Profile modal ─────────────────────────────────────────────────────── */
 function EditProfileModal({ user, onClose, onSave }) {
-  const [name,     setName]     = useState(user.name ?? '');
-  const [location, setLocation] = useState(
-    typeof user.location === 'string' ? user.location : ''
+  const [name,       setName]       = useState(user.name ?? '');
+  const [location,   setLocation]   = useState(
+    user.locationName ?? (typeof user.location === 'string' ? user.location : '')
   );
+  const [avatarFile,    setAvatarFile]    = useState(null);   // File object
+  const [avatarPreview, setAvatarPreview] = useState(null);   // local object URL
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
+  const fileInputRef = useRef(null);
+
+  // Clean up object URL on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview); };
+  }, [avatarPreview]);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setError('Photo must be under 5 MB.'); return; }
+    if (!file.type.startsWith('image/')) { setError('Please select an image file.'); return; }
+    setError('');
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -76,7 +94,13 @@ function EditProfileModal({ user, onClose, onSave }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ name: name.trim(), ...(location.trim() && { location: location.trim() }) });
+      // Always use FormData so the file is sent correctly
+      const fd = new FormData();
+      fd.append('name', name.trim());
+      if (location.trim()) fd.append('locationName', location.trim());
+      if (avatarFile) fd.append('avatar', avatarFile);
+      // Send locationName (plain text) — never the GeoJSON 'location' field
+      await onSave(fd);
       onClose();
     } catch (err) {
       setError(err?.message ?? 'Failed to update profile. Please try again.');
@@ -85,9 +109,53 @@ function EditProfileModal({ user, onClose, onSave }) {
     }
   };
 
+  // Avatar display: preview > existing > initials
+  const initials = user.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) ?? '?';
+  const displaySrc = avatarPreview ?? user.avatar?.url ?? null;
+
   return (
     <Modal title="Edit Profile" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
+
+        {/* Avatar picker */}
+        <div className="flex flex-col items-center gap-2 pb-2">
+          <div className="relative group">
+            <div className="size-20 rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-50 flex items-center justify-center">
+              {displaySrc ? (
+                <img src={displaySrc} alt="avatar preview" className="size-full object-cover" />
+              ) : (
+                <span className="text-2xl font-bold text-[#1e3b8a]">{initials}</span>
+              )}
+            </div>
+            {/* Camera overlay */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+              title="Change photo"
+            >
+              <span className="material-symbols-outlined text-white" style={{ fontSize: 24 }}>photo_camera</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs text-[#1e3b8a] font-medium hover:underline"
+          >
+            {avatarFile ? 'Change photo' : 'Upload photo'}
+          </button>
+          {avatarFile && (
+            <p className="text-xs text-slate-400 truncate max-w-[200px]">{avatarFile.name}</p>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">Full Name</label>
           <input
@@ -275,12 +343,19 @@ export default function Profile() {
           <div className="px-6 pb-6">
             {/* Avatar row */}
             <div className="flex items-end justify-between -mt-12 mb-4 flex-wrap gap-4">
-              <div className="size-24 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center overflow-hidden">
-                {user.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="size-full object-cover" />
-                ) : (
-                  <span className="text-3xl font-bold text-[#1e3b8a]">{initials}</span>
-                )}
+              {/* Avatar (click to open edit modal) */}
+              <div className="relative group cursor-pointer" onClick={() => setEditOpen(true)}>
+                <div className="size-24 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center overflow-hidden">
+                  {user.avatar?.url ? (
+                    <img src={user.avatar.url} alt={user.name} className="size-full object-cover" />
+                  ) : (
+                    <span className="text-3xl font-bold text-[#1e3b8a]">{initials}</span>
+                  )}
+                </div>
+                {/* Camera overlay on hover */}
+                <div className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="material-symbols-outlined text-white" style={{ fontSize: 22 }}>photo_camera</span>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -308,10 +383,10 @@ export default function Profile() {
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">{user.name}</h1>
                 <p className="text-slate-500 text-sm mt-0.5">{user.email}</p>
-                {user.location && typeof user.location === 'string' && (
+                {user.locationName && (
                   <p className="flex items-center gap-1 text-slate-400 text-xs mt-2">
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>location_on</span>
-                    {user.location}
+                    {user.locationName}
                   </p>
                 )}
               </div>

@@ -61,10 +61,10 @@ export const authService = {
    * @param {FormData|object} payload
    */
   updateProfile: async (payload) => {
-    const isFormData = payload instanceof FormData;
-    const res = await api.patch('/auth/me', payload, {
-      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
-    });
+    // Do NOT set Content-Type for FormData — axios auto-adds multipart/form-data
+    // with the correct boundary. Manually setting it strips the boundary and
+    // breaks multer parsing on the server.
+    const res = await api.patch('/auth/me', payload);
     return res.data;
   },
 

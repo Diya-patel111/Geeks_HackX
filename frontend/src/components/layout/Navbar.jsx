@@ -52,8 +52,8 @@ export default function Navbar() {
                   to="/profile"
                   className="h-8 w-8 rounded-full bg-[#1e3b8a]/10 border border-[#1e3b8a]/20 flex items-center justify-center overflow-hidden"
                 >
-                  {user.avatar ? (
-                    <img src={user.avatar} alt={user.name} className="h-full w-full object-cover" />
+                  {user.avatar?.url ? (
+                    <img src={user.avatar.url} alt={user.name} className="h-full w-full object-cover" />
                   ) : (
                     <span className="text-[#1e3b8a] text-xs font-bold uppercase">
                       {user.name?.[0] ?? 'U'}

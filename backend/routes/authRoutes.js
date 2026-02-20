@@ -13,9 +13,20 @@ const {
   deleteAccount,
 } = require('../controllers/authController');
 
+const multer = require('multer');
 const { protect } = require('../middleware/authMiddleware');
 const { authRateLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
+
+// ─── Multer — memory storage for avatar uploads ───────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed.'), false);
+  },
+});
 const {
   registerRules,
   loginRules,
@@ -58,7 +69,7 @@ router.get(
 router.get('/me', protect, getMe);
 
 // PATCH /api/v1/auth/me
-router.patch('/me', protect, updateProfileRules, validate, updateProfile);
+router.patch('/me', protect, upload.single('avatar'), updateProfileRules, validate, updateProfile);
 
 // PATCH /api/v1/auth/change-password
 router.patch('/change-password', protect, changePasswordRules, validate, changePassword);

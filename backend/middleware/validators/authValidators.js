@@ -72,7 +72,9 @@ const updateProfileRules = [
   body('name')
     .optional()
     .trim()
-    .isLength({ min: 2, max: 80 }).withMessage('Name must be between 2 and 80 characters.'),
-];
+    .isLength({ min: 2, max: 80 }).withMessage('Name must be between 2 and 80 characters.'),  body('locationName')
+    .optional()
+    .trim()
+    .isLength({ max: 120 }).withMessage('Location name cannot exceed 120 characters.'),];
 
 module.exports = { registerRules, loginRules, changePasswordRules, updateProfileRules };
