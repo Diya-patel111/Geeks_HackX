@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { issueService } from '@services/issueService';
 import { ISSUE_CATEGORIES, MAX_FILES, MAX_FILE_SIZE_MB } from '@utils/constants';
@@ -9,20 +9,74 @@ export default function CreateIssue() {
   const fileRef  = useRef();
 
   const [form, setForm] = useState({
-    title:            '',
-    description:      '',
-    category:         ISSUE_CATEGORIES[0],
-    seriousnessRating: 3,
+    title:       '',
+    description: '',
+    category:    ISSUE_CATEGORIES[0],
   });
   const [files,      setFiles]      = useState([]);
   const [fileErrs,   setFileErrs]   = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [apiError,   setApiError]   = useState('');
   const [geoError,   setGeoError]   = useState('');
-  const [geoStatus,  setGeoStatus]  = useState('');  // progress message shown to user
-  const [detectedLocation, setDetectedLocation] = useState(null); // { city, address }
+  const [geoStatus,  setGeoStatus]  = useState('');
+  // Stored GPS fix — kept in state so handleSubmit can always read it
+  const [coords,     setCoords]     = useState(null);       // { lat, lng }
+  const [geoMeta,    setGeoMeta]    = useState(null);       // full reverseGeocode result
+  const [locLabel,   setLocLabel]   = useState('');         // display string in readonly box
 
   const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+
+  // Detect location as soon as the component mounts
+  useEffect(() => {
+    let cancelled = false;
+    setGeoStatus('Detecting your location…');
+    setGeoError('');
+
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not supported by your browser.');
+      setGeoStatus('');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords: c }) => {
+        if (cancelled) return;
+        const lat = c.latitude;
+        const lng = c.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          setGeoError('Your device returned invalid coordinates. Please try again.');
+          setGeoStatus('');
+          return;
+        }
+        setCoords({ lat, lng });
+        setGeoStatus('Looking up your address…');
+
+        const meta = await reverseGeocode(lat, lng);
+        if (cancelled) return;
+        setGeoMeta(meta);
+
+        // Build a rich display label
+        const label = meta.fullLabel ||
+          [meta.road, meta.locality, meta.taluka, meta.district, meta.state]
+            .filter(Boolean).join(', ');
+        setLocLabel(label || 'Location detected');
+        setGeoStatus('');
+      },
+      (err) => {
+        if (cancelled) return;
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied. Please allow access in browser settings and reload.'
+            : err.code === err.POSITION_UNAVAILABLE
+            ? 'Could not determine your location. Check your device GPS / network.'
+            : 'Location request timed out. Please reload and try again.';
+        setGeoError(msg);
+        setGeoStatus('');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    );
+    return () => { cancelled = true; };
+  }, []);
 
   const handleFiles = (e) => {
     const selected = Array.from(e.target.files);
@@ -31,85 +85,28 @@ export default function CreateIssue() {
     if (!errs.length) setFiles(selected);
   };
 
-  const getLocation = () =>
-    new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not supported by your browser.'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          const lat = coords.latitude;
-          const lng = coords.longitude;
-          // Guard against browsers that return invalid values
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            reject(new Error('Your device returned invalid location coordinates. Please try again.'));
-            return;
-          }
-          resolve({ lat, lng });
-        },
-        (err) => {
-          const msg =
-            err.code === err.PERMISSION_DENIED
-              ? 'Location permission denied. Please allow location access in your browser settings.'
-              : err.code === err.POSITION_UNAVAILABLE
-              ? 'Your location could not be determined. Please check your device\'s GPS or network.'
-              : 'Location request timed out. Please try again.';
-          reject(new Error(msg));
-        },
-        { timeout: 10000, maximumAge: 60000 }  // 10 s timeout, accept 1-min-old cached fix
-      );
-    });
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (fileErrs.length) return;
 
-    setLoading(true);
-    setApiError('');
-    setGeoError('');
-    setGeoStatus('');
-    setDetectedLocation(null);
-
-    // ── Step 1: Get GPS coordinates
-    setGeoStatus('\uD83D\uDCCD Detecting your location\u2026');
-    let coords;
-    try {
-      coords = await getLocation();
-    } catch (err) {
-      setGeoError(err.message);
-      setGeoStatus('');
-      setLoading(false);
+    if (!coords) {
+      setGeoError('Location not yet detected. Please wait or reload and allow location access.');
       return;
     }
 
-    // ── Step 2: Reverse geocode to city/address (non-blocking — failure is OK)
-    setGeoStatus('\uD83C\uDFD9\uFE0F Looking up address\u2026');
-    const geo = await reverseGeocode(coords.lat, coords.lng);
-    if (geo.city || geo.address) {
-      setDetectedLocation(geo);
-    }
-    setGeoStatus('');
+    setLoading(true);
+    setApiError('');
 
     try {
-      // Validate coords one final time before submitting
-      if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
-        setGeoError('Invalid coordinates received from your device. Please try again.');
-        setLoading(false);
-        return;
-      }
-
       const fd = new FormData();
-      fd.append('title',             form.title);
-      fd.append('description',       form.description);
-      fd.append('category',          form.category);
-      fd.append('seriousnessRating', form.seriousnessRating);
-      // Include city/address in the GeoJSON so issues display a location label
+      fd.append('title',       form.title);
+      fd.append('description', form.description);
+      fd.append('category',    form.category);
       fd.append('location', JSON.stringify(
         buildGeoPoint(coords.lat, coords.lng, {
-          city:    geo.city    || undefined,
-          address: geo.address || undefined,
-          ward:    geo.ward    || undefined,
+          city:    geoMeta?.city    || undefined,
+          address: geoMeta?.address || undefined,
+          ward:    geoMeta?.ward    || undefined,
         })
       ));
       files.forEach((file) => fd.append('images', file));
@@ -124,24 +121,16 @@ export default function CreateIssue() {
   };
 
   return (
-    <main style={{ maxWidth: 620, margin: '0 auto', padding: '2rem 1rem' }}>
+    <main style={{ maxWidth: 620, margin: '0 auto', padding: '2rem 1rem', background: '#ffffff', minHeight: '100vh' }}>
       <button onClick={() => navigate(-1)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-primary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
         ← Back
       </button>
-      <h1 style={{ marginBottom: '1.5rem' }}>Report an Issue</h1>
+      <h1 style={{ marginBottom: '1.5rem', fontSize: '1.6rem', fontWeight: 700, color: '#111827' }}>Report an Issue</h1>
 
       {apiError && <div style={{ background: '#fef2f2', color: 'var(--color-danger)', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>{apiError}</div>}
-      {geoError && <div style={{ background: '#fffbeb', color: 'var(--color-warning)', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>{geoError}</div>}
-      {geoStatus && (
-        <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1d4ed8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-          {geoStatus}
-        </div>
-      )}
-      {detectedLocation && (
-        <div style={{ background: '#f0fdf4', color: '#15803d', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          \uD83D\uDCCD Location detected: <strong>{detectedLocation.address || detectedLocation.city}</strong>
-          {detectedLocation.city && detectedLocation.address && ` \u2014 ${detectedLocation.city}`}
+      {geoError && (
+        <div style={{ background: '#fffbeb', color: '#92400e', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          ⚠️ {geoError}
         </div>
       )}
 
@@ -166,23 +155,80 @@ export default function CreateIssue() {
           </select>
         </div>
 
-        {/* Seriousness Rating */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={labelStyle}>Seriousness Rating: {form.seriousnessRating} / 5</label>
-          <input type="range" name="seriousnessRating" min={1} max={5} value={form.seriousnessRating} onChange={handleChange} style={{ width: '100%' }} />
+        {/* Detected Location — read-only */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={labelStyle}>Detected Location</label>
+          <div style={{ position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: '0.75rem', top: '50%',
+              transform: 'translateY(-50%)', fontSize: '1rem', pointerEvents: 'none',
+            }}>&#128205;</span>
+            <input
+              readOnly
+              value={
+                geoStatus
+                  ? geoStatus
+                  : locLabel
+                    ? locLabel
+                    : geoError
+                      ? 'Location unavailable'
+                      : 'Waiting for GPS…'
+              }
+              style={{
+                ...inputStyle,
+                paddingLeft: '2.25rem',
+                background: '#f1f5f9',
+                color: locLabel ? '#1e3a5f' : '#9ca3af',
+                cursor: 'default',
+                fontWeight: locLabel ? 500 : 400,
+              }}
+            />
+            {geoStatus && (
+              <span style={{
+                position: 'absolute', right: '0.75rem', top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'inline-block', width: 14, height: 14,
+                border: '2px solid #2563eb', borderTopColor: 'transparent',
+                borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+              }} />
+            )}
+          </div>
+          {/* Full breakdown chips */}
+          {geoMeta && locLabel && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+              {[
+                geoMeta.road && { label: '🛣️ Road', value: geoMeta.road },
+                geoMeta.locality && { label: '🏘️ Area', value: geoMeta.locality },
+                geoMeta.taluka && { label: '📍 Taluka', value: geoMeta.taluka },
+                geoMeta.district && geoMeta.district !== geoMeta.taluka && { label: '🏛️ District', value: geoMeta.district },
+                geoMeta.state && { label: '🗺️ State', value: geoMeta.state },
+                geoMeta.pincode && { label: '📮 PIN', value: geoMeta.pincode },
+              ].filter(Boolean).map(({ label, value }) => (
+                <span key={label} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                  background: '#eff6ff', color: '#1e40af',
+                  fontSize: '0.75rem', fontWeight: 500,
+                  padding: '0.2rem 0.6rem', borderRadius: '999px',
+                  border: '1px solid #bfdbfe',
+                }}>
+                  <span style={{ color: '#6b7280', fontWeight: 400 }}>{label}:</span> {value}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Images */}
         <div style={{ marginBottom: '1.5rem' }}>
           <label style={labelStyle}>Photos (up to {MAX_FILES}, max {MAX_FILE_SIZE_MB} MB each)</label>
           <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: 'none' }} />
-          <button type="button" onClick={() => fileRef.current.click()} style={{ border: '1px dashed var(--color-border)', padding: '0.65rem 1rem', borderRadius: 'var(--radius)', background: '#f9fafb', cursor: 'pointer', width: '100%' }}>
+          <button type="button" onClick={() => fileRef.current.click()} style={{ border: '2px dashed #d1d5db', padding: '0.75rem 1rem', borderRadius: 'var(--radius)', background: '#f8fafc', cursor: 'pointer', width: '100%', color: '#6b7280', fontSize: '0.95rem', transition: 'border-color 0.15s' }}>
             {files.length ? `${files.length} file(s) selected` : 'Click to select images'}
           </button>
           {fileErrs.map((err, i) => <p key={i} style={{ color: 'var(--color-danger)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{err}</p>)}
         </div>
 
-        <button type="submit" disabled={loading} style={{ width: '100%', padding: '0.75rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', fontWeight: 700, fontSize: '1rem' }}>
+        <button type="submit" disabled={loading} style={{ width: '100%', padding: '0.78rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 'var(--radius)', fontWeight: 700, fontSize: '1rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.15s' }}>
           {loading ? 'Submitting…' : 'Submit Issue'}
         </button>
       </form>
@@ -190,5 +236,15 @@ export default function CreateIssue() {
   );
 }
 
-const labelStyle = { display: 'block', fontWeight: 500, marginBottom: '0.3rem', fontSize: '0.9rem' };
-const inputStyle = { width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', fontSize: '1rem', outline: 'none' };
+const labelStyle = { display: 'block', fontWeight: 500, marginBottom: '0.3rem', fontSize: '0.9rem', color: '#374151' };
+const inputStyle = {
+  width: '100%',
+  padding: '0.6rem 0.8rem',
+  border: '1.5px solid #d1d5db',
+  borderRadius: 'var(--radius)',
+  fontSize: '1rem',
+  outline: 'none',
+  background: '#ffffff',
+  color: '#111827',
+  transition: 'border-color 0.15s',
+};

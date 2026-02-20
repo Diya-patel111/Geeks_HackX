@@ -97,49 +97,79 @@ export function buildGeoPoint(lat, lng, meta = {}) {
 }
 
 /**
- * Reverse geocode coordinates to a human-readable address using
+/**
+ * Reverse geocode coordinates to a full Indian address using
  * OpenStreetMap Nominatim (free, no API key required).
  *
- * Returns { city, address } strings, or empty strings on failure
- * (never throws — location submission should not be blocked by geocoding).
+ * Returns structured Indian address fields + a formatted single-line label.
+ * Never throws — failure returns empty strings so submission still works.
  *
  * @param {number} lat
  * @param {number} lng
- * @returns {Promise<{ city: string, address: string, ward: string }>}
+ * @returns {Promise<{
+ *   road: string,
+ *   locality: string,
+ *   taluka: string,
+ *   district: string,
+ *   state: string,
+ *   pincode: string,
+ *   city: string,
+ *   ward: string,
+ *   address: string,
+ *   fullLabel: string,
+ * }>}
  */
 export async function reverseGeocode(lat, lng) {
+  const empty = {
+    road: '', locality: '', taluka: '', district: '',
+    state: '', pincode: '', city: '', ward: '', address: '', fullLabel: '',
+  };
   try {
-    const url =
-      `https://nominatim.openstreetmap.org/reverse` +
-      `?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    // Use the backend proxy to avoid Nominatim CORS restrictions.
+    // The backend forwards the request server-side (no browser-origin restriction).
+    const url = `/api/v1/geocode/reverse?lat=${lat}&lng=${lng}`;
 
-    const res = await fetch(url, {
-      headers: {
-        // Nominatim requires a descriptive User-Agent (fair-use policy)
-        'Accept-Language': 'en',
-        'User-Agent': 'JanAwaaz-CivicApp/1.0',
-      },
-    });
+    const res = await fetch(url);
 
-    if (!res.ok) return { city: '', address: '', ward: '' };
+    if (!res.ok) return empty;
 
     const data = await res.json();
     const a = data.address ?? {};
 
-    // city: prefer city → town → village → county → state_district
-    const city =
-      a.city ?? a.town ?? a.village ?? a.county ?? a.state_district ?? '';
+    // ── Extract each Indian administrative level ──────────────────────────
+    const road      = a.road ?? a.pedestrian ?? a.footway ?? a.path ?? '';
+    const locality  = a.suburb ?? a.neighbourhood ?? a.quarter ??
+                      a.village ?? a.hamlet ?? '';
+    const taluka    = a.county ?? a.subdistrict ?? a.district ?? '';
+    const district  = a.state_district ??
+                      (a.county !== taluka ? a.county : '') ?? '';
+    const state     = a.state ?? '';
+    const pincode   = a.postcode ?? '';
+    const city      = a.city ?? a.town ?? a.municipality ?? locality ?? '';
+    const ward      = locality || taluka;
 
-    // ward / suburb
-    const ward = a.suburb ?? a.neighbourhood ?? a.quarter ?? '';
+    // ── Build a clean short address for the DB (road + locality + city) ───
+    const shortParts = [road, locality || city].filter(Boolean);
+    const address = shortParts.length
+      ? shortParts.join(', ')
+      : (data.display_name?.split(',').slice(0, 3).join(',') ?? '');
 
-    // Short human-readable address: road + suburb/city
-    const parts = [a.road, ward || city].filter(Boolean);
-    const address = parts.length ? parts.join(', ') : (data.display_name?.split(',').slice(0, 2).join(',') ?? '');
+    // ── Build the full human-readable label shown in the read-only box ────
+    // Format: Road, Locality, Taluka, District, State – Pincode
+    const labelParts = [
+      road,
+      locality,
+      taluka && taluka !== locality  ? taluka   : '',
+      district && district !== taluka ? district : '',
+      state,
+    ].filter(Boolean);
 
-    return { city, address, ward };
+    // Remove consecutive duplicates (Nominatim sometimes repeats values)
+    const deduped = labelParts.filter((v, i, arr) => v !== arr[i - 1]);
+    const fullLabel = deduped.join(', ') + (pincode ? ` – ${pincode}` : '');
+
+    return { road, locality, taluka, district, state, pincode, city, ward, address, fullLabel };
   } catch {
-    // Network failure, JSON parse error, etc. — silently degrade.
-    return { city: '', address: '', ward: '' };
+    return empty;
   }
 }

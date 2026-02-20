@@ -130,7 +130,7 @@ export default function IssueDetail() {
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="Add a comment…"
-              style={{ flex: 1, padding: '0.55rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', fontSize: '0.95rem' }}
+              style={{ flex: 1, padding: '0.6rem 0.85rem', border: '1.5px solid #d1d5db', borderRadius: 'var(--radius)', fontSize: '0.95rem', background: '#ffffff', color: '#111827', outline: 'none' }}
             />
             <button type="submit" disabled={commenting || !comment.trim()} style={{ padding: '0.55rem 1.1rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600 }}>
               {commenting ? '…' : 'Post'}
