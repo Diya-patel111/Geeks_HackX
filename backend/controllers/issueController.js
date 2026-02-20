@@ -105,8 +105,12 @@ exports.createIssue = asyncHandler(async (req, res) => {
     title: issue.title,
   });
 
-  // ── Notify users within 10 km (fire-and-forget — never blocks response)
-  notificationService.notifyNearbyUsers(issue, 10).catch(() => {});
+  // ── Notify users within 10 km and capture count
+  const notifiedCount = await notificationService.notifyNearbyUsers(issue, 10).catch(() => 0);
+  
+  // ── Update issue with notification count
+  await Issue.findByIdAndUpdate(issue._id, { notifiedCount }, { new: true });
+  issue.notifiedCount = notifiedCount;
 
   res.status(201).json(new ApiResponse(201, issue, 'Issue reported successfully.'));
 });
@@ -309,6 +313,37 @@ exports.verifyIssue = asyncHandler(async (req, res) => {
     throw new ApiError(409, 'You have already verified this issue.');
   }
 
+  // ── Check if current user is within 10km of issue location
+  const user = await User.findById(req.user._id);
+  if (!user) throw new ApiError(404, 'User not found.');
+
+  const [issueLng, issueLat] = issue.location?.coordinates ?? [];
+  const [userLng, userLat] = user.location?.coordinates ?? [0, 0];
+
+  // Validate coordinates are finite
+  if (!Number.isFinite(issueLng) || !Number.isFinite(issueLat) ||
+      !Number.isFinite(userLng) || !Number.isFinite(userLat)) {
+    throw new ApiError(400, 'Invalid location coordinates.');
+  }
+
+  // Convert 10km to radians for $geoWithin query
+  const RADIUS_KM = 10;
+  const radiusInRadians = RADIUS_KM / 6378.1;
+
+  // Use $geoWithin to check if user is within 10km radius
+  const usersWithinRadius = await User.countDocuments({
+    _id: req.user._id,
+    location: {
+      $geoWithin: {
+        $centerSphere: [[issueLng, issueLat], radiusInRadians],
+      },
+    },
+  });
+
+  if (usersWithinRadius === 0) {
+    throw new ApiError(403, 'You are outside verification radius');
+  }
+
   // ── Optional comment image
   let commentImage = { url: '', publicId: '' };
   if (req.file) {
@@ -317,6 +352,9 @@ exports.verifyIssue = asyncHandler(async (req, res) => {
       'civicpulse/verifications'
     );
   }
+
+  // ── Store verification status before changes
+  const wasVerified = issue.status === 'Verified';
 
   // ── Apply all changes in one save
   issue.comments.push({
@@ -328,7 +366,13 @@ exports.verifyIssue = asyncHandler(async (req, res) => {
   issue.verificationCount += 1;
   issue.seriousnessRatings.push(rating);
   issue.recalculateAverageSeverity();
-  issue.updateStatus();
+
+  // ── Override: Set status to "Verified" if verificationCount >= 3
+  if (issue.verificationCount >= 3) {
+    issue.status = 'Verified';
+  } else {
+    issue.updateStatus();
+  }
 
   await issue.save();
 
@@ -340,12 +384,29 @@ exports.verifyIssue = asyncHandler(async (req, res) => {
     if (creator) await creator.adjustCredibility(delta);
   }
 
-  // ── Real-time update
+  // ── Real-time update: Emit issue:verified socket event
+  const io = require('../socket/index').getIO();
+  if (io) {
+    io.emit('issue:verified', {
+      issueId: issue._id.toString(),
+      verificationCount: issue.verificationCount,
+      averageSeverity: issue.averageSeverity,
+      status: issue.status,
+      timestamp: new Date(),
+    });
+  }
+
+  // ── Also emit via existing emitIssueVerified for subscribed clients
   emitIssueVerified(issue._id, {
     verificationCount: issue.verificationCount,
     averageSeverity: issue.averageSeverity,
     status: issue.status,
   });
+
+  // ── Notify admin users if issue just became Verified
+  if (!wasVerified && issue.status === 'Verified') {
+    await notificationService.notifyAdminsOnVerification(issue);
+  }
 
   // ── Notify creator
   if (issue.createdBy.toString() !== req.user._id.toString()) {
@@ -360,10 +421,12 @@ exports.verifyIssue = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
+        issueId: issue._id,
         verificationCount: issue.verificationCount,
         averageSeverity: issue.averageSeverity,
         status: issue.status,
         commentCount: issue.commentCount,
+        withinRadius: true,
       },
       'Issue verified successfully.'
     )

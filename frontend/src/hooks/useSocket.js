@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { SOCKET_URL } from '@utils/constants';
+import { useToast } from './useToast';
 
 // ─── Module-level singleton ────────────────────────────────────────────────────
 // One Socket.io connection for the whole app lifetime.  Multiple useSocket()
@@ -41,16 +42,25 @@ function releaseSocket() {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 /**
  * Returns the shared Socket.io client instance and room-join helpers.
+ * Also supports listening to "issue:verified" events to update UI state.
  *
  * Usage:
- *   const { socket, joinIssueRoom, leaveIssueRoom } = useSocket();
+ *   const { socket, joinIssueRoom, leaveIssueRoom, onIssueVerified } = useSocket();
+ *   
+ *   // Option 1: Listen to issue verified events
+ *   onIssueVerified((issueId, updateFn) => {
+ *     updateFn(prev => ({ ...prev, verificationCount: prev.verificationCount + 1 }));
+ *   });
+ *   
+ *   // Option 2: Manual event listener
  *   useEffect(() => {
- *     socket?.on('issueCreated', handler);
- *     return () => socket?.off('issueCreated', handler);
+ *     socket?.on('issueVerified', handler);
+ *     return () => socket?.off('issueVerified', handler);
  *   }, [socket]);
  */
 export function useSocket() {
   const socketRef = useRef(null);
+  const { success } = useToast();
 
   useEffect(() => {
     const socket = acquireSocket();
@@ -62,6 +72,30 @@ export function useSocket() {
     };
   }, []);
 
+  // ─── Helper: Listen to issue:verified event ───────────────────────────────
+  const onIssueVerified = useCallback((onVerified) => {
+    if (!socketRef.current) return;
+
+    const handler = (data) => {
+      // Trigger success toast
+      success('Issue has reached Verified status');
+      
+      // Call the callback with the verified data
+      if (typeof onVerified === 'function') {
+        onVerified(data);
+      }
+      
+      console.debug('[Socket] issue:verified event received:', data);
+    };
+
+    socketRef.current.on('issue:verified', handler);
+
+    // Cleanup: remove listener on unmount
+    return () => {
+      socketRef.current?.off('issue:verified', handler);
+    };
+  }, [success]);
+
   // ─── Room helpers (emit wrappers) ──────────────────────────────────────────
   const joinIssueRoom  = (id)   => socketRef.current?.emit('join_issue',  id);
   const leaveIssueRoom = (id)   => socketRef.current?.emit('leave_issue', id);
@@ -69,10 +103,11 @@ export function useSocket() {
   const leaveAreaRoom  = (city) => socketRef.current?.emit('leave_area',  city);
 
   return {
-    socket:        socketRef.current,
+    socket:           socketRef.current,
     joinIssueRoom,
     leaveIssueRoom,
     joinAreaRoom,
     leaveAreaRoom,
+    onIssueVerified,  // NEW: Listen to verified events
   };
 }

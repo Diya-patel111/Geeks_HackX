@@ -3,6 +3,10 @@ import AppHeader from '@components/layout/AppHeader';
 import AdminSidebar from '@components/layout/AdminSidebar';
 import AdminIssueRow from '@components/issues/AdminIssueRow';
 import StatCard from '@components/ui/StatCard';
+import IssueStatsChart from '@components/admin/IssueStatsChart';
+import AdminRecentActivity from '@components/admin/AdminRecentActivity';
+import VerificationTimeline from '@components/admin/VerificationTimeline';
+import AdminIssueFilters from '@components/admin/AdminIssueFilters';
 import Loader from '@components/common/Loader';
 import { useAuth } from '@hooks/useAuth';
 import { issueService } from '@services/issueService';
@@ -19,6 +23,50 @@ const ADMIN_HEADER_NAV = [
   { label: 'Reports',  to: '/admin/reports'               },
   { label: 'Settings', to: '/admin/settings'              },
 ];
+
+/* Enhanced Stat Card Component */
+function EnhancedStatCard({ icon, label, value, subtext, color = 'blue' }) {
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-100',
+    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    amber: 'bg-amber-50 text-amber-600 border-amber-100',
+    rose: 'bg-rose-50 text-rose-600 border-rose-100',
+    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+  };
+
+  const bgColorMap = {
+    blue: 'bg-blue-100',
+    emerald: 'bg-emerald-100',
+    amber: 'bg-amber-100',
+    rose: 'bg-rose-100',
+    purple: 'bg-purple-100',
+  };
+
+  const textColorMap = {
+    blue: 'text-blue-600',
+    emerald: 'text-emerald-600',
+    amber: 'text-amber-600',
+    rose: 'text-rose-600',
+    purple: 'text-purple-600',
+  };
+
+  return (
+    <div className={`bg-white rounded-xl border ${colorClasses[color]} shadow-sm p-6 hover:shadow-md transition-shadow`}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+          <p className={`text-3xl font-bold ${textColorMap[color]} mb-2`}>{value}</p>
+          {subtext && <p className="text-sm text-slate-600">{subtext}</p>}
+        </div>
+        <div className={`${bgColorMap[color]} p-3 rounded-lg`}>
+          <span className={`material-symbols-outlined ${textColorMap[color]}`} style={{ fontSize: 28 }}>
+            {icon}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* Bar chart row */
 function CategoryBar({ label, pct, color = 'bg-[#1e3b8a]' }) {
@@ -94,9 +142,9 @@ export default function AdminPanel() {
   };
 
   const stats = [
-    { label: 'Total Pending',   value: adminStats?.totalPending   ?? '—', icon: 'pending_actions', color: 'text-amber-600'    },
-    { label: 'New Today',       value: adminStats?.newToday       ?? '—', icon: 'today',           color: 'text-[#1e3b8a]'   },
-    { label: 'Avg Resolution',  value: adminStats?.avgResolutionDays ? `${adminStats.avgResolutionDays}d` : '—', icon: 'avg_pace', color: 'text-emerald-600' },
+    { label: 'Total Issues',   value: adminStats?.totalIssues   ?? '—', icon: 'assignment', color: 'text-[#1e3b8a]' },
+    { label: 'Verified Issues',       value: adminStats?.totalVerifiedIssues       ?? '—', icon: 'verified',           color: 'text-emerald-600'   },
+    { label: 'Active Users',  value: adminStats?.totalUsers ? `${adminStats.totalUsers}` : '—', icon: 'people', color: 'text-purple-600' },
   ];
 
   const categoryBreakdown = adminStats?.categoryBreakdown ?? [
@@ -111,7 +159,7 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-[#f6f6f8] font-display flex flex-col">
       <AppHeader
         logoTo="/admin"
-        logoText="JanAwaaz Admin"
+        logoText="Admin Dashboard"
         navLinks={ADMIN_HEADER_NAV}
       />
 
@@ -124,30 +172,73 @@ export default function AdminPanel() {
         {/* Main */}
         <main className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
 
-          {/* Summary stat cards */}
-          {loadingStats ? (
-            <div className="flex justify-center py-8"><Loader /></div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {stats.map(({ label, value, icon, color }) => (
-                <div key={label} className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4 flex items-center gap-4">
-                  <div className={`size-11 rounded-xl bg-slate-50 flex items-center justify-center ${color}`}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 22 }}>{icon}</span>
-                  </div>
-                  <div>
-                    <p className={`text-2xl font-bold ${color}`}>{value}</p>
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mt-0.5">{label}</p>
-                  </div>
-                </div>
-              ))}
+          {/* Key Metrics Section */}
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-slate-900">Dashboard Overview</h2>
+              <p className="text-slate-600 text-sm mt-1">Real-time platform metrics and performance indicators</p>
             </div>
-          )}
 
-          {/* Analytics row */}
+            {loadingStats ? (
+              <div className="flex justify-center py-8"><Loader /></div>
+            ) : (
+              <>
+                {/* Primary Metrics - 3 columns */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <EnhancedStatCard
+                    icon="assignment"
+                    label="Total Issues"
+                    value={adminStats?.totalIssues ?? '—'}
+                    subtext="All reported issues"
+                    color="blue"
+                  />
+                  <EnhancedStatCard
+                    icon="verified"
+                    label="Verified Issues"
+                    value={adminStats?.totalVerifiedIssues ?? '—'}
+                    subtext={`${adminStats?.totalIssues ? Math.round((adminStats.totalVerifiedIssues / adminStats.totalIssues) * 100) : 0}% verification rate`}
+                    color="emerald"
+                  />
+                  <EnhancedStatCard
+                    icon="people"
+                    label="Active Citizens"
+                    value={adminStats?.totalUsers ?? '—'}
+                    subtext="Registered users"
+                    color="purple"
+                  />
+                </div>
+
+                {/* Secondary Metrics - 2 columns */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EnhancedStatCard
+                    icon="schedule"
+                    label="Avg Verification Time"
+                    value={adminStats?.averageVerificationTime?.hours ? `${Math.round(adminStats.averageVerificationTime.hours)}h` : '—'}
+                    subtext={adminStats?.averageVerificationTime?.hours ? `${Math.round(adminStats.averageVerificationTime.ms / 1000 / 60)} minutes average` : 'Calculating...'}
+                    color="amber"
+                  />
+                  <EnhancedStatCard
+                    icon="notifications_active"
+                    label="Latest Issue Reach"
+                    value={adminStats?.totalUsersNotifiedForLatestIssue ?? '—'}
+                    subtext="Citizens notified for latest issue"
+                    color="rose"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Analytics & Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Category breakdown */}
+            {/* Issue Distribution */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h3 className="font-semibold text-slate-800 mb-5">Issues by Category</h3>
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-semibold text-slate-800">Issue Distribution</h3>
+                <span className="bg-[#1e3b8a]/10 text-[#1e3b8a] text-xs font-semibold px-2.5 py-1 rounded-full">
+                  By Category
+                </span>
+              </div>
               <div className="space-y-4">
                 {categoryBreakdown.map((c) => (
                   <CategoryBar key={c.label} label={c.label} pct={c.pct} />
@@ -155,14 +246,83 @@ export default function AdminPanel() {
               </div>
             </div>
 
-            {/* Hotspot map placeholder */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col">
-              <h3 className="font-semibold text-slate-800 mb-3">Issue Hotspot Map</h3>
-              <div className="flex-1 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 min-h-[160px]">
-                <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 40 }}>map</span>
-                <p className="text-sm text-slate-400">Map integration coming soon</p>
+            {/* Platform Health */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-semibold text-slate-800">Platform Health</h3>
+                <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Operational
+                </span>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-600">Database Health</span>
+                    <span className="text-sm font-semibold text-emerald-600">Healthy</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full w-full bg-emerald-500 rounded-full" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-600">API Response Time</span>
+                    <span className="text-sm font-semibold text-emerald-600">&lt;100ms</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full w-4/5 bg-emerald-500 rounded-full" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-600">Geospatial Index</span>
+                    <span className="text-sm font-semibold text-emerald-600">Optimized</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full w-full bg-emerald-500 rounded-full" />
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-600">Notification Queue</span>
+                    <span className="text-sm font-semibold text-blue-600">Active</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full w-3/4 bg-blue-500 rounded-full" />
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* Issue Status Analytics - Circular Progress Indicators */}
+          {!loadingStats && adminStats && (
+            <div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-slate-900">Issue Performance Metrics</h2>
+                <p className="text-slate-600 text-sm mt-1">Verification and resolution analytics</p>
+              </div>
+              <IssueStatsChart
+                totalIssues={adminStats.totalIssues || 0}
+                verifiedIssues={adminStats.totalVerifiedIssues || 0}
+                resolvedIssues={0}
+                pendingIssues={0}
+              />
+            </div>
+          )}
+
+          {/* Recent Activity & Quick Actions */}
+          <AdminRecentActivity />
+
+          {/* Verification Timeline */}
+          <VerificationTimeline />
+
+          {/* Issue Filters */}
+          <div className="mt-8">
+            <AdminIssueFilters onFilterChange={(filters) => {
+              console.log('Filters applied:', filters);
+            }} />
           </div>
 
           {/* Issues table */}

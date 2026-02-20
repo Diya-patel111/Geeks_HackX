@@ -156,6 +156,13 @@ const issueSchema = new mongoose.Schema(
       processedAt: { type: Date },
     },
 
+    // ── Notification Tracking ──────────────────────────────────────────────
+    notifiedCount: {
+      type: Number,
+      default: 0,
+      min: [0, 'notifiedCount cannot be negative'],
+    },
+
     resolvedAt: { type: Date },
   },
   {

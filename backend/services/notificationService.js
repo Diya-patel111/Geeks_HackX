@@ -32,48 +32,79 @@ const sendInAppNotification = async (userId, data) => {
 };
 
 /**
- * Find all active users within `radiusKm` of the issue location
+ * Find all active citizen users within 10km of the issue location
+ * using MongoDB $geoWithin + $centerSphere.
  * (excluding the reporter) and send each a 'new_issue_nearby' notification.
+ * Returns count of notified users.
  * Fire-and-forget — never throws so it cannot break issue creation.
  *
  * @param {import('mongoose').Document} issue
  * @param {number} [radiusKm=10]
+ * @returns {Promise<number>} Count of notified users
  */
 const notifyNearbyUsers = async (issue, radiusKm = 10) => {
   try {
     const [lng, lat] = issue.location?.coordinates ?? [];
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return 0;
 
-    // Find users whose stored GPS is within radiusKm.
-    // Exclude: the reporter, accounts with default [0,0] coords, inactive accounts.
+    // Convert km to radians using Earth's mean radius (6378.1 km)
+    const radiusInRadians = radiusKm / 6378.1;
+
+    // Find users within 10km radius using $geoWithin with $centerSphere
+    // Filter: isActive: true, role: "citizen", exclude issue creator
     const nearbyUsers = await User.find({
-      _id:      { $ne: issue.createdBy },
+      _id: { $ne: issue.createdBy },
       isActive: true,
+      role: 'citizen',
       location: {
-        $near: {
-          $geometry:    { type: 'Point', coordinates: [lng, lat] },
-          $maxDistance: radiusKm * 1000, // metres
-          $minDistance: 1,               // exclude exact [0,0] default
+        $geoWithin: {
+          $centerSphere: [[lng, lat], radiusInRadians],
         },
       },
     }).select('_id').lean();
 
-    if (!nearbyUsers.length) return;
+    if (!nearbyUsers.length) return 0;
 
-    await Promise.all(
-      nearbyUsers.map((u) =>
-        sendInAppNotification(u._id, {
-          type:  'new_issue_nearby',
-          title: `New issue reported nearby`,
-          body:  `"${issue.title}" was just reported within ${radiusKm} km of your location.`,
-          issue: issue._id,
-          meta:  { category: issue.category, distance: radiusKm },
-        })
-      )
-    );
+    // ── Batch create notifications using insertMany()
+    const notificationDocs = nearbyUsers.map((user) => ({
+      user: user._id,
+      type: 'new_issue_nearby',
+      title: 'New issue reported nearby',
+      body: `"${issue.title}" was just reported within ${radiusKm} km of your location.`,
+      issue: issue._id,
+      meta: { category: issue.category, distance: radiusKm },
+      read: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+
+    await Notification.insertMany(notificationDocs);
+
+    // ── Emit socket event to each notified user
+    const io = getIO();
+    if (io) {
+      nearbyUsers.forEach((user) => {
+        const payload = {
+          issueId: issue._id,
+          title: issue.title,
+          category: issue.category,
+          distance: radiusKm,
+          location: {
+            address: issue.location.address || '',
+            city: issue.location.city || '',
+            ward: issue.location.ward || '',
+          },
+          timestamp: new Date(),
+        };
+        io.to(user._id.toString()).emit('issue:nearby', payload);
+      });
+    }
+
+    return nearbyUsers.length;
   } catch (err) {
     // Never let notification failure surface to the user
     console.error('[notifyNearbyUsers] error:', err.message);
+    return 0;
   }
 };
 
@@ -87,4 +118,67 @@ const sendPushNotification = async (recipientTokens, payload) => {
   }
 };
 
-module.exports = { sendInAppNotification, sendPushNotification, notifyNearbyUsers };
+/**
+ * Notify admin users when an issue becomes Verified.
+ * Sends both in-app notification and socket event.
+ * Fire-and-forget — never throws.
+ *
+ * @param {import('mongoose').Document} issue
+ */
+const notifyAdminsOnVerification = async (issue) => {
+  try {
+    // Find all admin users
+    const adminUsers = await User.find({
+      role: 'admin',
+      isActive: true,
+    }).select('_id').lean();
+
+    if (!adminUsers.length) return;
+
+    // Batch create notifications for all admins
+    const notificationDocs = adminUsers.map((admin) => ({
+      user: admin._id,
+      type: 'issue_verified',
+      title: 'Issue Verified - Requires Attention',
+      body: `Issue "${issue.title}" in ${issue.location.city || 'your area'} has been verified by citizens. Status: ${issue.status}`,
+      issue: issue._id,
+      meta: {
+        category: issue.category,
+        verificationCount: issue.verificationCount,
+        averageSeverity: issue.averageSeverity,
+        city: issue.location.city,
+      },
+      read: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+
+    await Notification.insertMany(notificationDocs);
+
+    // Emit socket event to each admin
+    const io = getIO();
+    if (io) {
+      adminUsers.forEach((admin) => {
+        const payload = {
+          issueId: issue._id,
+          title: issue.title,
+          category: issue.category,
+          verificationCount: issue.verificationCount,
+          averageSeverity: issue.averageSeverity,
+          status: issue.status,
+          location: {
+            address: issue.location.address || '',
+            city: issue.location.city || '',
+            ward: issue.location.ward || '',
+          },
+          timestamp: new Date(),
+        };
+        io.to(`user_${admin._id}`).emit('issue:verified-admin', payload);
+      });
+    }
+  } catch (err) {
+    console.error('[notifyAdminsOnVerification] error:', err.message);
+  }
+};
+
+module.exports = { sendInAppNotification, sendPushNotification, notifyNearbyUsers, notifyAdminsOnVerification };

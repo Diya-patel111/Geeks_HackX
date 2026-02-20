@@ -6,28 +6,70 @@ const asyncHandler = require('../utils/asyncHandler');
 
 // ─── GET /api/v1/admin/stats ──────────────────────────────────────────────────
 exports.getStats = asyncHandler(async (_req, res) => {
-  const [totalUsers, totalIssues, resolvedIssues, pendingIssues] = await Promise.all([
+  const [
+    totalUsers,
+    totalIssues,
+    verifiedIssues,
+    resolvedIssues,
+    pendingIssues,
+    latestIssue,
+  ] = await Promise.all([
     User.countDocuments({ isActive: true }),
     Issue.countDocuments(),
+    Issue.countDocuments({ $or: [{ status: 'Verified' }, { status: 'Critical' }] }),
     Issue.countDocuments({ status: 'Resolved' }),
     Issue.countDocuments({ status: 'Pending' }),
+    Issue.findOne().sort({ createdAt: -1 }).select('notifiedCount createdAt updatedAt comments'),
   ]);
 
-  const inProgress = totalIssues - resolvedIssues - pendingIssues;
+  const inProgress = totalIssues - verifiedIssues - resolvedIssues - pendingIssues;
+
+  // Calculate average verification time for verified/critical issues
+  let averageVerificationTimeMs = 0;
+  if (verifiedIssues > 0) {
+    const verifiedIssuesList = await Issue.find(
+      { $or: [{ status: 'Verified' }, { status: 'Critical' }] }
+    ).select('createdAt updatedAt comments');
+
+    const verificationTimes = verifiedIssuesList.map((issue) => {
+      // Use the timestamp of the first comment (first verification) as proxy for verification time
+      const firstCommentTime = issue.comments?.[0]?.createdAt || issue.updatedAt;
+      return new Date(firstCommentTime) - new Date(issue.createdAt);
+    });
+
+    averageVerificationTimeMs =
+      verificationTimes.reduce((a, b) => a + b, 0) / verificationTimes.length;
+  }
+
+  // Convert milliseconds to hours for readability
+  const averageVerificationTimeHours = Math.round(averageVerificationTimeMs / (1000 * 60 * 60) * 10) / 10;
+
+  // Get notified count from latest issue
+  const totalUsersNotifiedForLatestIssue = latestIssue?.notifiedCount || 0;
 
   res.status(200).json(
     new ApiResponse(200, {
-      users:      { total: totalUsers },
-      issues: {
-        total:      totalIssues,
-        pending:    pendingIssues,
-        inProgress: Math.max(0, inProgress),
-        resolved:   resolvedIssues,
-        resolutionRate: totalIssues
-          ? Math.round((resolvedIssues / totalIssues) * 100)
-          : 0,
+      totalUsers,
+      totalIssues,
+      totalVerifiedIssues: verifiedIssues,
+      averageVerificationTime: {
+        milliseconds: Math.round(averageVerificationTimeMs),
+        hours: averageVerificationTimeHours,
       },
-    })
+      totalUsersNotifiedForLatestIssue,
+      issues: {
+        total: totalIssues,
+        verified: verifiedIssues,
+        pending: pendingIssues,
+        inProgress: Math.max(0, inProgress),
+        resolved: resolvedIssues,
+        resolutionRate: totalIssues ? Math.round((resolvedIssues / totalIssues) * 100) : 0,
+      },
+      users: {
+        total: totalUsers,
+      },
+    }),
+    'Admin statistics retrieved successfully.'
   );
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { issueService } from '@services/issueService';
 import { useAuth } from '@hooks/useAuth';
+import { useSocket } from '@hooks/useSocket';
 import Loader from '@components/common/Loader';
 import { timeAgo, formatCount } from '@utils/formatters';
 import { STATUS_COLORS } from '@utils/constants';
@@ -10,6 +11,7 @@ export default function IssueDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const { onIssueVerified } = useSocket();
 
   const [issue,   setIssue]   = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +28,27 @@ export default function IssueDetail() {
       .catch((err) => { if (!cancelled) { setError(err.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [id]);
+
+  // ─── Listen for issue:verified socket event ────────────────────────────────
+  useEffect(() => {
+    const unsubscribe = onIssueVerified((data) => {
+      // Update verification count in state when issue is verified
+      if (data?.issueId === id) {
+        setIssue((prev) => ({
+          ...prev,
+          verificationCount: data.verificationCount || (prev?.verificationCount || 0) + 1,
+          status: data.status || prev?.status,
+          averageSeverity: data.averageSeverity ?? prev?.averageSeverity,
+        }));
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [id, onIssueVerified]);
 
   const handleLike = async () => {
     if (!isAuthenticated) { navigate('/login'); return; }
