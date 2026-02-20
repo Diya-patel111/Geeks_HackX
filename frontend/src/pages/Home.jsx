@@ -64,12 +64,12 @@ export default function Home() {
             <div className="relative">
               <div className="absolute -top-10 -right-10 w-64 h-64 bg-[#1e3b8a]/5 rounded-full blur-3xl" />
               <div className="relative bg-slate-200 dark:bg-slate-800 rounded-xl aspect-[4/3] shadow-2xl overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-tr from-[#1e3b8a]/20 to-transparent" />
                 <img
                   src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800&q=80"
                   alt="City overview"
-                  className="w-full h-full object-cover mix-blend-overlay group-hover:scale-105 transition-transform duration-700"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
+                <div className="absolute inset-0 bg-gradient-to-tr from-[#1e3b8a]/10 to-transparent" />
               </div>
             </div>
           </div>
@@ -123,14 +123,29 @@ export default function Home() {
             </Link>
           </div>
           {isLoading ? (
-            <div className="flex justify-center py-16"><Loader /></div>
-          ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {issues.length > 0
-                ? issues.map((issue) => <IssueCard key={issue._id} issue={issue} variant="landing" />)
-                : Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-80 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
-                  ))}
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm">
+                  <div className="h-48 bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                  <div className="p-6 space-y-3">
+                    <div className="h-5 bg-slate-200 dark:bg-slate-700 rounded animate-pulse w-3/4" />
+                    <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                    <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse w-5/6" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : issues.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {issues.map((issue) => <IssueCard key={issue._id} issue={issue} variant="landing" />)}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <span className="material-symbols-outlined text-slate-300 dark:text-slate-600" style={{ fontSize: 64 }}>feed</span>
+              <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium">No issues reported yet.</p>
+              <Link to="/issues/new" className="mt-4 inline-block bg-[#1e3b8a] text-white px-6 py-3 rounded-lg font-bold text-sm hover:bg-[#1e3b8a]/90 transition-colors">
+                Be the first to report
+              </Link>
             </div>
           )}
         </div>

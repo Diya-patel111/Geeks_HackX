@@ -4,32 +4,31 @@ import { useAuth } from '@hooks/useAuth';
 import { validators } from '@utils/validators';
 import { authService } from '@services/authService';
 
-/* ── Floating-label input ─────────────────────────────────────────────────── */
+/* ── Labelled input ───────────────────────────────────────────────────────── */
 function FloatingInput({ id, label, type = 'text', value, onChange, autoComplete, rightSlot }) {
   return (
-    <div className="relative">
-      <input
-        id={id}
-        name={id}
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder=" "
-        autoComplete={autoComplete}
-        className="peer block w-full px-4 py-4 text-slate-900 dark:text-white bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3b8a]/20 focus:border-[#1e3b8a] transition-all"
-      />
+    <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
-        className="absolute left-4 top-4 text-slate-500 dark:text-slate-400 pointer-events-none transition-all duration-200 origin-left
-          peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100
-          peer-not-placeholder-shown:-translate-y-6 peer-not-placeholder-shown:scale-[0.85] peer-not-placeholder-shown:text-[#1e3b8a] peer-not-placeholder-shown:bg-white dark:peer-not-placeholder-shown:bg-[#121620] peer-not-placeholder-shown:px-1
-          peer-focus:-translate-y-6 peer-focus:scale-[0.85] peer-focus:text-[#1e3b8a] peer-focus:bg-white dark:peer-focus:bg-[#121620] peer-focus:px-1"
+        className="text-sm font-medium text-slate-700 dark:text-slate-300"
       >
         {label}
       </label>
-      {rightSlot && (
-        <div className="absolute right-4 top-4">{rightSlot}</div>
-      )}
+      <div className="relative">
+        <input
+          id={id}
+          name={id}
+          type={type}
+          value={value}
+          onChange={onChange}
+          placeholder={label}
+          autoComplete={autoComplete}
+          className="block w-full px-4 py-3 text-slate-900 dark:text-white bg-[#f6f6f8] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3b8a]/20 focus:border-[#1e3b8a] transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+        />
+        {rightSlot && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightSlot}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -48,11 +47,12 @@ export default function Login() {
     ? 'Google sign-in failed. Please try again or use email & password.'
     : null;
 
-  const [mode, setMode]       = useState(initialMode);
-  const [showPw, setShowPw]   = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [apiError, setApiError] = useState(oauthError ?? '');
-  const [errors, setErrors]   = useState({});
+  const [mode, setMode]           = useState(initialMode);
+  const [showPw, setShowPw]       = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [apiError, setApiError]   = useState(oauthError ?? '');
+  const [noAccount, setNoAccount] = useState(false);
+  const [errors, setErrors]       = useState({});
 
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '', role: 'citizen',
@@ -87,6 +87,7 @@ export default function Login() {
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
+    setNoAccount(false);
     try {
       if (mode === 'login') {
         await login({ email: form.email, password: form.password });
@@ -95,7 +96,11 @@ export default function Login() {
       }
       navigate(from, { replace: true });
     } catch (err) {
-      setApiError(err.message || (mode === 'login' ? 'Login failed.' : 'Registration failed.'));
+      const msg = err.message || (mode === 'login' ? 'Login failed.' : 'Registration failed.');
+      if (mode === 'login' && (msg.toLowerCase().includes('no account') || msg.toLowerCase().includes('sign up'))) {
+        setNoAccount(true);
+      }
+      setApiError(msg);
     } finally {
       setLoading(false);
     }
@@ -152,7 +157,7 @@ export default function Login() {
               <button
                 key={m}
                 type="button"
-                onClick={() => { setMode(m); setErrors({}); setApiError(''); }}
+                onClick={() => { setMode(m); setErrors({}); setApiError(''); setNoAccount(false); }}
                 className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
                   mode === m
                     ? 'bg-white dark:bg-slate-700 shadow-sm text-[#1e3b8a] dark:text-white'
@@ -166,9 +171,20 @@ export default function Login() {
 
           {/* API error */}
           {apiError && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>error</span>
-              {apiError}
+            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 18 }}>error</span>
+                <span>{apiError}</span>
+              </div>
+              {noAccount && (
+                <button
+                  type="button"
+                  onClick={() => { setMode('signup'); setApiError(''); setNoAccount(false); setErrors({}); }}
+                  className="mt-2 w-full text-center bg-[#1e3b8a] text-white text-sm font-bold py-2 rounded-lg hover:bg-[#1e3b8a]/90 transition-colors"
+                >
+                  Create a new account →
+                </button>
+              )}
             </div>
           )}
 

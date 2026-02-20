@@ -11,7 +11,7 @@ const registerRules = [
     .trim()
     .notEmpty().withMessage('Email is required.')
     .isEmail().withMessage('Please provide a valid email address.')
-    .normalizeEmail(),
+    .toLowerCase(),
 
   body('password')
     .notEmpty().withMessage('Password is required.')
@@ -38,7 +38,7 @@ const loginRules = [
     .trim()
     .notEmpty().withMessage('Email is required.')
     .isEmail().withMessage('Please provide a valid email address.')
-    .normalizeEmail(),
+    .toLowerCase(),
 
   body('password')
     .notEmpty().withMessage('Password is required.'),
