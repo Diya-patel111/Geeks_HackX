@@ -23,32 +23,36 @@ const LIST_PROJECTION =
 exports.createIssue = asyncHandler(async (req, res) => {
   const { title, description, category, seriousnessRating } = req.body;
 
-  // ── Parse location from JSON string or object
+  // ── Parse location — accepts both GeoJSON and flat { latitude, longitude } ─
   let location;
   try {
     location = typeof req.body.location === 'string'
       ? JSON.parse(req.body.location)
       : req.body.location;
   } catch {
-    throw new ApiError(400, 'Invalid location format. Expected GeoJSON Point object.');
+    throw new ApiError(400, 'Invalid location format. Send a JSON string.');
   }
 
-  if (
-    !location?.coordinates ||
-    !Array.isArray(location.coordinates) ||
-    location.coordinates.length !== 2
-  ) {
-    throw new ApiError(400, 'location.coordinates must be [longitude, latitude].');
+  if (!location || typeof location !== 'object') {
+    throw new ApiError(400, 'Location must be a JSON object.');
   }
 
-  const [lng, lat] = location.coordinates;
+  let lngNum, latNum;
 
-  // Use Number.isFinite (not global isFinite) — Number.isFinite(null) = false,
-  // but global isFinite(null) = true because it coerces null → 0 first.
-  // Then Number(value) is used instead of parseFloat to keep the exact IEEE
-  // double value without string conversion side-effects.
-  const lngNum = Number(lng);
-  const latNum = Number(lat);
+  // GeoJSON format: { type: "Point", coordinates: [lng, lat] }
+  if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+    lngNum = Number(location.coordinates[0]);
+    latNum = Number(location.coordinates[1]);
+  }
+  // Flat format: { latitude, longitude }
+  else if (location.latitude !== undefined && location.longitude !== undefined) {
+    latNum = Number(location.latitude);
+    lngNum = Number(location.longitude);
+  }
+  else {
+    throw new ApiError(400, 'Location must include coordinates [lng, lat] or latitude + longitude fields.');
+  }
+
   if (!Number.isFinite(lngNum) || !Number.isFinite(latNum)) {
     throw new ApiError(400, 'Location coordinates must be finite numbers. Please allow location access and try again.');
   }
@@ -456,172 +460,7 @@ exports.addComment = asyncHandler(async (req, res) => {
   res.status(201).json(new ApiResponse(201, newComment, 'Comment added.'));
 });
 
-
-// ── Create Issue ──────────────────────────────────────────────────────────
-exports.createIssue = asyncHandler(async (req, res) => {
-  const { title, description, category, location } = req.body;
-
-  let images = [];
-  if (req.files?.length) {
-    images = await cloudinaryService.uploadMultiple(req.files, 'civicpulse/issues');
-  }
-
-  const issue = await Issue.create({
-    title,
-    description,
-    category,
-    location,
-    images,
-    createdBy: req.user._id,
-  });
-
-  // Real-time broadcast
-  emitIssueCreated({ issueId: issue._id, category, location });
-
-  res.status(201).json(new ApiResponse(201, issue, 'Issue reported successfully.'));
-});
-
-// ── Get All Issues ─────────────────────────────────────────────────────────
-exports.getIssues = asyncHandler(async (req, res) => {
-  const { category, status, page = 1, limit = 20, lat, lng, radius = 5000, sort } = req.query;
-
-  const filter = {};
-  if (category) filter.category = category;
-  if (status) filter.status = status;
-
-  if (lat && lng) {
-    filter.location = {
-      $near: {
-        $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-        $maxDistance: parseInt(radius),
-      },
-    };
-  }
-
-  // Sort presets: trending | severity | newest (default)
-  const sortMap = {
-    trending: { likeCount: -1, verificationCount: -1, createdAt: -1 },
-    severity: { averageSeverity: -1, createdAt: -1 },
-    newest: { createdAt: -1 },
-  };
-  const sortOption = sortMap[sort] || sortMap.newest;
-
-  const { docs: issues, pagination } = await Issue.paginate(filter, {
-    page,
-    limit,
-    sort: sortOption,
-  });
-
-  res.status(200).json(new ApiResponse(200, { issues, pagination }));
-});
-
-// ── Get Single Issue ───────────────────────────────────────────────────────
-exports.getIssue = asyncHandler(async (req, res) => {
-  const issue = await Issue.findById(req.params.id)
-    .populate('createdBy', 'name avatar credibilityScore')
-    .populate('assignedTo', 'name email');
-
-  if (!issue) throw new ApiError(404, 'Issue not found.');
-  res.status(200).json(new ApiResponse(200, issue));
-});
-
-// ── Update Issue Status ────────────────────────────────────────────────────
-exports.updateStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const allowed = ['Pending', 'Verified', 'Critical', 'Resolved', 'Rejected'];
-  if (!allowed.includes(status)) throw new ApiError(400, `Invalid status. Must be one of: ${allowed.join(', ')}`);
-
-  const issue = await Issue.findByIdAndUpdate(
-    req.params.id,
-    { status, ...(status === 'Resolved' && { resolvedAt: new Date() }) },
-    { new: true, runValidators: true }
-  );
-
-  if (!issue) throw new ApiError(404, 'Issue not found.');
-
-  // Notify creator
-  await notificationService.sendPushNotification([issue.createdBy.toString()], {
-    title: 'Issue Update',
-    body: `Your issue "${issue.title}" is now ${status}.`,
-    data: { issueId: issue._id.toString() },
-  });
-
-  // Real-time broadcast
-  emitStatusUpdate(issue._id, { status, updatedBy: req.user._id });
-
-  res.status(200).json(new ApiResponse(200, issue, 'Status updated.'));
-});
-
-// ── Upvote Issue ──────────────────────────────────────────────────────────
-exports.upvoteIssue = asyncHandler(async (req, res) => {
-  const issue = await Issue.findById(req.params.id);
-  if (!issue) throw new ApiError(404, 'Issue not found.');
-
-  const userId = req.user._id.toString();
-  const alreadyLiked = issue.likes.map(String).includes(userId);
-
-  if (alreadyLiked) {
-    issue.likes.pull(req.user._id);
-  } else {
-    issue.likes.addToSet(req.user._id);
-  }
-  issue.likeCount = issue.likes.length;
-  await issue.save();
-
-  res.status(200).json(
-    new ApiResponse(200, { likeCount: issue.likeCount, liked: !alreadyLiked })
-  );
-});
-
-// ── Delete Issue ──────────────────────────────────────────────────────────
-exports.deleteIssue = asyncHandler(async (req, res) => {
-  const issue = await Issue.findById(req.params.id);
-  if (!issue) throw new ApiError(404, 'Issue not found.');
-
-  const isOwner = issue.createdBy.toString() === req.user._id.toString();
-  const isAdmin = req.user.role === 'admin';
-  if (!isOwner && !isAdmin) throw new ApiError(403, 'You are not authorized to delete this issue.');
-
-  const allPublicIds = [
-    ...(issue.image?.publicId ? [issue.image.publicId] : []),
-    ...(issue.images?.map((img) => img.publicId) || []),
-  ];
-  if (allPublicIds.length) {
-    await cloudinaryService.deleteMultiple(allPublicIds);
-  }
-
-  await issue.deleteOne();
-  res.status(200).json(new ApiResponse(200, null, 'Issue deleted.'));
-});
-
-// ── Verify Issue ─────────────────────────────────────────────────────────
-exports.verifyIssue = asyncHandler(async (req, res) => {
-  const issue = await Issue.findById(req.params.id);
-  if (!issue) throw new ApiError(404, 'Issue not found.');
-  if (issue.status === 'Resolved' || issue.status === 'Rejected') {
-    throw new ApiError(400, 'Cannot verify a resolved or rejected issue.');
-  }
-
-  await issue.addVerification();
-
-  // Bump reporter credibility on first verification milestone
-  if (issue.verificationCount === 5) {
-    const User = require('../models/User');
-    const creator = await User.findById(issue.createdBy);
-    if (creator) await creator.adjustCredibility(10);
-  }
-
-  emitIssueVerified(issue._id, {
-    verificationCount: issue.verificationCount,
-    status: issue.status,
-  });
-
-  res.status(200).json(
-    new ApiResponse(200, { verificationCount: issue.verificationCount, status: issue.status }, 'Issue verified.')
-  );
-});
-
-// ── Rate Issue Seriousness ───────────────────────────────────────────────
+// ─── 11. Rate Issue Seriousness ──────────────────────────────────────────────
 exports.rateIssue = asyncHandler(async (req, res) => {
   const { rating } = req.body;
   const parsed = parseInt(rating, 10);
@@ -644,11 +483,3 @@ exports.rateIssue = asyncHandler(async (req, res) => {
   );
 });
 
-// ── Get Trending Issues ───────────────────────────────────────────────────
-exports.getTrending = asyncHandler(async (req, res) => {
-  const { status, limit = 20 } = req.query;
-  const filter = {};
-  if (status) filter.status = status;
-  const issues = await Issue.trending(filter, parseInt(limit));
-  res.status(200).json(new ApiResponse(200, issues));
-});

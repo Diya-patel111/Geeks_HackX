@@ -24,23 +24,37 @@ const createIssueRules = [
       try {
         loc = typeof value === 'string' ? JSON.parse(value) : value;
       } catch {
-        throw new Error('Location must be a valid JSON object.');
+        throw new Error('Location must be a valid JSON string.');
       }
-      if (!loc?.coordinates || !Array.isArray(loc.coordinates) || loc.coordinates.length !== 2) {
-        throw new Error('location must be a GeoJSON Point with [longitude, latitude] coordinates.');
+
+      if (!loc || typeof loc !== 'object') {
+        throw new Error('Location must be a JSON object.');
       }
-      const [lng, lat] = loc.coordinates;
-      // Use Number.isFinite — unlike global isFinite(), it does NOT coerce.
-      // isFinite(null) = true but Number.isFinite(null) = false.
-      // NaN comparisons always return false, so range checks alone cannot catch NaN/null.
-      if (typeof lng !== 'number' || !Number.isFinite(lng)) {
-        throw new Error('Longitude must be a finite number.');
+
+      let lngNum, latNum;
+
+      // ── Accept GeoJSON format: { type: "Point", coordinates: [lng, lat] } ──
+      if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+        lngNum = Number(loc.coordinates[0]);
+        latNum = Number(loc.coordinates[1]);
       }
-      if (typeof lat !== 'number' || !Number.isFinite(lat)) {
-        throw new Error('Latitude must be a finite number.');
+      // ── Accept flat format: { latitude, longitude } ────────────────────────
+      else if (loc.latitude !== undefined && loc.longitude !== undefined) {
+        latNum = Number(loc.latitude);
+        lngNum = Number(loc.longitude);
       }
-      if (lng < -180 || lng > 180) throw new Error('Longitude must be between -180 and 180.');
-      if (lat < -90  || lat > 90)  throw new Error('Latitude must be between -90 and 90.');
+      // ── Neither format recognised ──────────────────────────────────────────
+      else {
+        throw new Error(
+          'Location must contain either coordinates: [longitude, latitude] (GeoJSON) ' +
+          'or latitude + longitude fields.'
+        );
+      }
+
+      if (!Number.isFinite(lngNum)) throw new Error(`Longitude must be a finite number (got: ${lngNum}).`);
+      if (!Number.isFinite(latNum)) throw new Error(`Latitude must be a finite number (got: ${latNum}).`);
+      if (lngNum < -180 || lngNum > 180) throw new Error('Longitude must be between -180 and 180.');
+      if (latNum < -90  || latNum > 90)  throw new Error('Latitude must be between -90 and 90.');
       return true;
     }),
 

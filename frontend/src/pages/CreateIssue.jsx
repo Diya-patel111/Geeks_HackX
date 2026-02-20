@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { issueService } from '@services/issueService';
 import { ISSUE_CATEGORIES, MAX_FILES, MAX_FILE_SIZE_MB } from '@utils/constants';
-import { buildGeoPoint, validateFiles, reverseGeocode } from '@utils/formatters';
+import { validateFiles, reverseGeocode } from '@utils/formatters';
 
 export default function CreateIssue() {
   const navigate = useNavigate();
@@ -87,6 +87,17 @@ export default function CreateIssue() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setApiError('');
+
+    // ── Client-side guards — catch obvious errors before hitting the server ──
+    if (form.title.trim().length < 5) {
+      setApiError('Title must be at least 5 characters.');
+      return;
+    }
+    if (form.description.trim().length < 10) {
+      setApiError('Description must be at least 10 characters.');
+      return;
+    }
     if (fileErrs.length) return;
 
     if (!coords) {
@@ -94,27 +105,47 @@ export default function CreateIssue() {
       return;
     }
 
+    // Extra guard: GPS returned but values are somehow invalid
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+      setGeoError(`GPS returned invalid coordinates (lat=${coords.lat}, lng=${coords.lng}). Please reload.`);
+      return;
+    }
+
     setLoading(true);
     setApiError('');
 
     try {
+      // Build GeoJSON explicitly — Number() cast ensures types are always
+      // numeric even if GPS coords somehow arrived as strings.
+      const locationPayload = {
+        type:        'Point',
+        coordinates: [Number(coords.lng), Number(coords.lat)], // GeoJSON: [longitude, latitude]
+        ...(geoMeta?.city    ? { city:    geoMeta.city    } : {}),
+        ...(geoMeta?.address ? { address: geoMeta.address } : {}),
+        ...(geoMeta?.ward    ? { ward:    geoMeta.ward    } : {}),
+      };
+
+      const locationJson = JSON.stringify(locationPayload);
+
       const fd = new FormData();
-      fd.append('title',       form.title);
-      fd.append('description', form.description);
+      fd.append('title',       form.title.trim());
+      fd.append('description', form.description.trim());
       fd.append('category',    form.category);
-      fd.append('location', JSON.stringify(
-        buildGeoPoint(coords.lat, coords.lng, {
-          city:    geoMeta?.city    || undefined,
-          address: geoMeta?.address || undefined,
-          ward:    geoMeta?.ward    || undefined,
-        })
-      ));
+      fd.append('location',    locationJson);
       files.forEach((file) => fd.append('images', file));
 
       const issue = await issueService.createIssue(fd);
-      navigate(`/issues/${issue._id ?? issue.data?._id}`);
+      // api.js interceptor unwraps ApiResponse → issueService returns res.data (the issue doc)
+      const issueId = issue?._id ?? issue?.data?._id;
+      if (!issueId) throw new Error('Issue created but no ID returned from server.');
+      navigate(`/issues/${issueId}`);
     } catch (err) {
-      setApiError(err.message || 'Failed to submit issue. Please try again.');
+      // err.message is the backend validation message (set by api.js interceptor)
+      const msg = err?.message || 'Failed to submit issue. Please try again.';
+      setApiError(msg);
+      console.error('[CreateIssue] submit error status:', err?.status);
+      console.error('[CreateIssue] submit error data:', err?.data);
+      console.error('[CreateIssue] submit error message:', msg);
     } finally {
       setLoading(false);
     }
@@ -127,7 +158,11 @@ export default function CreateIssue() {
       </button>
       <h1 style={{ marginBottom: '1.5rem', fontSize: '1.6rem', fontWeight: 700, color: '#111827' }}>Report an Issue</h1>
 
-      {apiError && <div style={{ background: '#fef2f2', color: 'var(--color-danger)', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>{apiError}</div>}
+      {apiError && (
+        <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '0.75rem 1rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem', border: '1px solid #fca5a5', fontWeight: 500 }}>
+          ❌ {apiError}
+        </div>
+      )}
       {geoError && (
         <div style={{ background: '#fffbeb', color: '#92400e', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           ⚠️ {geoError}

@@ -68,7 +68,7 @@ api.interceptors.response.use(
     // Build a normalised error so callers don't have to dig through axios structure
     const message =
       data?.message ||
-      data?.errors?.join('. ') ||
+      (Array.isArray(data?.errors) ? data.errors.map(e => e.msg || e).join('. ') : null) ||
       `Request failed with status ${status}`;
 
     const err = new Error(message);
