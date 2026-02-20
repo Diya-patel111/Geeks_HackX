@@ -17,6 +17,8 @@ const IssueDetail        = lazy(() => import('@pages/IssueDetail'));
 const CreateIssue        = lazy(() => import('@pages/CreateIssue'));
 const NotFound           = lazy(() => import('@pages/NotFound'));
 const GoogleOAuthSuccess = lazy(() => import('@pages/GoogleOAuthSuccess'));
+const MyIssues               = lazy(() => import('@pages/MyIssues'));
+const VerificationRequests   = lazy(() => import('@pages/VerificationRequests'));
 
 export default function App() {
   return (
@@ -37,10 +39,12 @@ export default function App() {
 
           {/* ── Protected — any authenticated user ───────────────────────── */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard"   element={<Dashboard />} />
-            <Route path="/issues/new"  element={<CreateIssue />} />
-            <Route path="/issues/:id"  element={<IssueDetail />} />
-            <Route path="/profile"     element={<Profile />} />
+            <Route path="/dashboard"         element={<Dashboard />} />
+            <Route path="/issues/new"         element={<CreateIssue />} />
+            <Route path="/issues/:id"         element={<IssueDetail />} />
+            <Route path="/profile"            element={<Profile />} />
+            <Route path="/my-issues"          element={<MyIssues />} />
+            <Route path="/verify-requests"    element={<VerificationRequests />} />
           </Route>
 
           {/* ── Admin / official only ─────────────────────────────────────── */}

@@ -51,20 +51,28 @@ const issueSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ['Point'],
-        required: true,
+        // No `required: true` here — the `default` below handles it.
+        // Having both required+default causes Mongoose to validate before
+        // applying the default in certain scenarios.
         default: 'Point',
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
         required: [true, 'Location coordinates are required'],
-        validate: {
-          validator: (v) => v.length === 2,
-          message: 'Coordinates must be [longitude, latitude].',
-        },
+        validate: [
+          {
+            validator: (v) => Array.isArray(v) && v.length === 2,
+            message: 'Coordinates must be [longitude, latitude].',
+          },
+          {
+            validator: (v) => v.every((n) => typeof n === 'number' && isFinite(n)),
+            message: 'Coordinates must be valid numbers.',
+          },
+        ],
       },
       address: { type: String, trim: true },
-      city: { type: String, trim: true },
-      ward: { type: String, trim: true },
+      city:    { type: String, trim: true },
+      ward:    { type: String, trim: true },
     },
 
     // Primary cover image (Cloudinary)

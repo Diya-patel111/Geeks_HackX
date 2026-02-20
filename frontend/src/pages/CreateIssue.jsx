@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { issueService } from '@services/issueService';
 import { ISSUE_CATEGORIES, MAX_FILES, MAX_FILE_SIZE_MB } from '@utils/constants';
-import { buildGeoPoint, validateFiles } from '@utils/formatters';
+import { buildGeoPoint, validateFiles, reverseGeocode } from '@utils/formatters';
 
 export default function CreateIssue() {
   const navigate = useNavigate();
@@ -14,11 +14,13 @@ export default function CreateIssue() {
     category:         ISSUE_CATEGORIES[0],
     seriousnessRating: 3,
   });
-  const [files,    setFiles]   = useState([]);
-  const [fileErrs, setFileErrs] = useState([]);
-  const [loading,  setLoading] = useState(false);
-  const [apiError, setApiError] = useState('');
-  const [geoError, setGeoError] = useState('');
+  const [files,      setFiles]      = useState([]);
+  const [fileErrs,   setFileErrs]   = useState([]);
+  const [loading,    setLoading]    = useState(false);
+  const [apiError,   setApiError]   = useState('');
+  const [geoError,   setGeoError]   = useState('');
+  const [geoStatus,  setGeoStatus]  = useState('');  // progress message shown to user
+  const [detectedLocation, setDetectedLocation] = useState(null); // { city, address }
 
   const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
@@ -36,8 +38,26 @@ export default function CreateIssue() {
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
-        () => reject(new Error('Location permission denied. Please allow location access.'))
+        ({ coords }) => {
+          const lat = coords.latitude;
+          const lng = coords.longitude;
+          // Guard against browsers that return invalid values
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            reject(new Error('Your device returned invalid location coordinates. Please try again.'));
+            return;
+          }
+          resolve({ lat, lng });
+        },
+        (err) => {
+          const msg =
+            err.code === err.PERMISSION_DENIED
+              ? 'Location permission denied. Please allow location access in your browser settings.'
+              : err.code === err.POSITION_UNAVAILABLE
+              ? 'Your location could not be determined. Please check your device\'s GPS or network.'
+              : 'Location request timed out. Please try again.';
+          reject(new Error(msg));
+        },
+        { timeout: 10000, maximumAge: 60000 }  // 10 s timeout, accept 1-min-old cached fix
       );
     });
 
@@ -48,27 +68,54 @@ export default function CreateIssue() {
     setLoading(true);
     setApiError('');
     setGeoError('');
+    setGeoStatus('');
+    setDetectedLocation(null);
 
+    // ── Step 1: Get GPS coordinates
+    setGeoStatus('\uD83D\uDCCD Detecting your location\u2026');
     let coords;
     try {
       coords = await getLocation();
     } catch (err) {
       setGeoError(err.message);
+      setGeoStatus('');
       setLoading(false);
       return;
     }
 
+    // ── Step 2: Reverse geocode to city/address (non-blocking — failure is OK)
+    setGeoStatus('\uD83C\uDFD9\uFE0F Looking up address\u2026');
+    const geo = await reverseGeocode(coords.lat, coords.lng);
+    if (geo.city || geo.address) {
+      setDetectedLocation(geo);
+    }
+    setGeoStatus('');
+
     try {
+      // Validate coords one final time before submitting
+      if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+        setGeoError('Invalid coordinates received from your device. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       const fd = new FormData();
-      fd.append('title',            form.title);
-      fd.append('description',      form.description);
-      fd.append('category',         form.category);
+      fd.append('title',             form.title);
+      fd.append('description',       form.description);
+      fd.append('category',          form.category);
       fd.append('seriousnessRating', form.seriousnessRating);
-      fd.append('location', JSON.stringify(buildGeoPoint(coords.lat, coords.lng)));
+      // Include city/address in the GeoJSON so issues display a location label
+      fd.append('location', JSON.stringify(
+        buildGeoPoint(coords.lat, coords.lng, {
+          city:    geo.city    || undefined,
+          address: geo.address || undefined,
+          ward:    geo.ward    || undefined,
+        })
+      ));
       files.forEach((file) => fd.append('images', file));
 
       const issue = await issueService.createIssue(fd);
-      navigate(`/issues/${issue._id}`);
+      navigate(`/issues/${issue._id ?? issue.data?._id}`);
     } catch (err) {
       setApiError(err.message || 'Failed to submit issue. Please try again.');
     } finally {
@@ -85,6 +132,18 @@ export default function CreateIssue() {
 
       {apiError && <div style={{ background: '#fef2f2', color: 'var(--color-danger)', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>{apiError}</div>}
       {geoError && <div style={{ background: '#fffbeb', color: 'var(--color-warning)', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>{geoError}</div>}
+      {geoStatus && (
+        <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1d4ed8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+          {geoStatus}
+        </div>
+      )}
+      {detectedLocation && (
+        <div style={{ background: '#f0fdf4', color: '#15803d', padding: '0.75rem', borderRadius: 'var(--radius)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+          \uD83D\uDCCD Location detected: <strong>{detectedLocation.address || detectedLocation.city}</strong>
+          {detectedLocation.city && detectedLocation.address && ` \u2014 ${detectedLocation.city}`}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {/* Title */}

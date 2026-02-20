@@ -6,12 +6,14 @@ const authRoutes         = require('./authRoutes');
 const issueRoutes        = require('./issueRoutes');
 const adminRoutes        = require('./adminRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const userRoutes         = require('./userRoutes');
 
 const loadRoutes = (app) => {
   app.use('/api/v1/auth',          authRoutes);
   app.use('/api/v1/issues',        issueRoutes);
   app.use('/api/v1/admin',         adminRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/v1/users',         userRoutes);
 };
 
 module.exports = loadRoutes;

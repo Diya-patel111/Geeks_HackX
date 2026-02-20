@@ -1,14 +1,13 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 
 /**
  * Top header bar for interior app pages (Dashboard, Admin).
  *
  * Props:
- *  - title     {string}  breadcrumb / back-label
  *  - logoTo    {string}  where logo links to
  *  - logoText  {string}  brand text
- *  - navLinks  {Array}   [{ label, to, active? }]
+ *  - navLinks  {Array}   [{ label, to, icon? }]
  */
 export default function AppHeader({
   logoTo = '/dashboard',
@@ -16,7 +15,6 @@ export default function AppHeader({
   navLinks = [],
 }) {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   return (
     <header className="flex h-16 w-full items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 shrink-0 z-20">
@@ -30,15 +28,25 @@ export default function AppHeader({
         </Link>
 
         {navLinks.length > 0 && (
-          <nav className="hidden md:flex items-center gap-6">
-            {navLinks.map(({ label, to, active }) => (
-              <Link
+          <nav className="hidden md:flex items-center gap-1">
+            {navLinks.map(({ label, to, icon }) => (
+              <NavLink
                 key={to}
                 to={to}
-                className={`text-sm font-${active ? 'semibold text-[#1e3b8a]' : 'medium text-slate-600 dark:text-slate-400 hover:text-[#1e3b8a]'} transition-colors`}
+                end
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-[#1e3b8a]/10 text-[#1e3b8a]'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-[#1e3b8a]'
+                  }`
+                }
               >
+                {icon && (
+                  <span className="material-symbols-outlined" style={{ fontSize: 17 }}>{icon}</span>
+                )}
                 {label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
         )}

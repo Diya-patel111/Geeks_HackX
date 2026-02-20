@@ -18,6 +18,10 @@ export function useIssues(initialParams = {}, options = {}) {
   const fetchOnMount =
     typeof options === 'boolean' ? options : (options.fetchOnMount ?? true);
 
+  // Optional custom fetcher — defaults to issueService.getIssues
+  const fetcher =
+    (typeof options === 'object' && options.fetcher) || issueService.getIssues;
+
   const [issues,     setIssues]     = useState([]);
   const [pagination, setPagination] = useState(null);
   const [isLoading,  setIsLoading]  = useState(false);
@@ -25,7 +29,9 @@ export function useIssues(initialParams = {}, options = {}) {
 
   // Keep params in a ref so the `fetch` closure is always current without
   // needing to be in the useCallback dependency array.
-  const paramsRef = useRef({ page: 1, limit: 20, ...initialParams });
+  const paramsRef  = useRef({ page: 1, limit: 20, ...initialParams });
+  const fetcherRef = useRef(fetcher);
+  useEffect(() => { fetcherRef.current = fetcher; }); // keep in sync
 
   const fetchIssues = useCallback(async (overrides = {}) => {
     if (Object.keys(overrides).length) {
@@ -36,7 +42,7 @@ export function useIssues(initialParams = {}, options = {}) {
     setError(null);
 
     try {
-      const result = await issueService.getIssues(paramsRef.current);
+      const result = await fetcherRef.current(paramsRef.current);
       setIssues(result.issues ?? []);
       setPagination(result.pagination ?? null);
     } catch (err) {

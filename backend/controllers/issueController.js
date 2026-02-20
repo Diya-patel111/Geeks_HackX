@@ -16,7 +16,7 @@ const {
 
 // ─── Projection: fields needed for list views (saves bandwidth) ───────────────
 const LIST_PROJECTION =
-  'title category status location.coordinates location.address location.city ' +
+  'title category status location.coordinates location.address location.city location.ward ' +
   'image likeCount verificationCount averageSeverity createdAt createdBy';
 
 // ─── 1. Create Issue ──────────────────────────────────────────────────────────
@@ -41,6 +41,20 @@ exports.createIssue = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'location.coordinates must be [longitude, latitude].');
   }
 
+  const [lng, lat] = location.coordinates;
+
+  // Use Number.isFinite (not global isFinite) — Number.isFinite(null) = false,
+  // but global isFinite(null) = true because it coerces null → 0 first.
+  // Then Number(value) is used instead of parseFloat to keep the exact IEEE
+  // double value without string conversion side-effects.
+  const lngNum = Number(lng);
+  const latNum = Number(lat);
+  if (!Number.isFinite(lngNum) || !Number.isFinite(latNum)) {
+    throw new ApiError(400, 'Location coordinates must be finite numbers. Please allow location access and try again.');
+  }
+  if (lngNum < -180 || lngNum > 180) throw new ApiError(400, 'Longitude must be between -180 and 180.');
+  if (latNum < -90  || latNum > 90)  throw new ApiError(400, 'Latitude must be between -90 and 90.');
+
   // ── Upload cover image (first file) + extras (remaining files)
   let image = { url: '', publicId: '' };
   let images = [];
@@ -57,11 +71,21 @@ exports.createIssue = asyncHandler(async (req, res) => {
   const rating = parseInt(seriousnessRating, 10);
   const seriousnessRatings = rating >= 1 && rating <= 5 ? [rating] : [];
 
+  // Build location explicitly — never spread the raw parsed object to
+  // avoid Mongoose misinterpreting extra keys or a missing `type` field.
+  const locationDoc = {
+    type:        'Point',
+    coordinates: [lngNum, latNum],
+    ...(location.address && { address: location.address }),
+    ...(location.city    && { city:    location.city    }),
+    ...(location.ward    && { ward:    location.ward    }),
+  };
+
   const issue = await Issue.create({
     title,
     description,
     category,
-    location: { ...location, type: 'Point' },
+    location: locationDoc,
     image,
     images,
     seriousnessRatings,
@@ -93,8 +117,14 @@ exports.getIssues = asyncHandler(async (req, res) => {
   } = req.query;
 
   const filter = {};
-  if (category) filter.category = category;
-  if (status) filter.status = status;
+  if (category) {
+    const cats = category.split(',').map(s => s.trim()).filter(Boolean);
+    filter.category = cats.length === 1 ? cats[0] : { $in: cats };
+  }
+  if (status) {
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+    filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+  }
   if (city) filter['location.city'] = new RegExp(city, 'i');
   if (ward) filter['location.ward'] = new RegExp(ward, 'i');
 

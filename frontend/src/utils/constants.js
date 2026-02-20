@@ -12,14 +12,14 @@ export const SOCKET_URL =
 
 /** ─── Issue categories (must match backend enum) ────────────────────────── */
 export const ISSUE_CATEGORIES = [
-  'Pothole',
-  'StreetLight',
-  'Garbage',
-  'WaterLeakage',
-  'Sewage',
-  'IllegalConstruction',
-  'NoisePollution',
-  'Other',
+  'road',
+  'water',
+  'electricity',
+  'sanitation',
+  'safety',
+  'environment',
+  'infrastructure',
+  'other',
 ];
 
 /** ─── Issue statuses ───────────────────────────────────────────────────────── */

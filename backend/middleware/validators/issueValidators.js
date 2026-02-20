@@ -20,11 +20,25 @@ const createIssueRules = [
   body('location')
     .notEmpty().withMessage('Location is required.')
     .custom((value) => {
-      const loc = typeof value === 'string' ? JSON.parse(value) : value;
+      let loc;
+      try {
+        loc = typeof value === 'string' ? JSON.parse(value) : value;
+      } catch {
+        throw new Error('Location must be a valid JSON object.');
+      }
       if (!loc?.coordinates || !Array.isArray(loc.coordinates) || loc.coordinates.length !== 2) {
         throw new Error('location must be a GeoJSON Point with [longitude, latitude] coordinates.');
       }
       const [lng, lat] = loc.coordinates;
+      // Use Number.isFinite — unlike global isFinite(), it does NOT coerce.
+      // isFinite(null) = true but Number.isFinite(null) = false.
+      // NaN comparisons always return false, so range checks alone cannot catch NaN/null.
+      if (typeof lng !== 'number' || !Number.isFinite(lng)) {
+        throw new Error('Longitude must be a finite number.');
+      }
+      if (typeof lat !== 'number' || !Number.isFinite(lat)) {
+        throw new Error('Latitude must be a finite number.');
+      }
       if (lng < -180 || lng > 180) throw new Error('Longitude must be between -180 and 180.');
       if (lat < -90  || lat > 90)  throw new Error('Latitude must be between -90 and 90.');
       return true;

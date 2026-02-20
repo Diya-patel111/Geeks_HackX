@@ -85,6 +85,19 @@ export default function IssueDetail() {
         {issue.category} · Reported {timeAgo(issue.createdAt)} by {issue.createdBy?.name ?? 'Unknown'}
       </p>
 
+      {/* Location */}
+      {(issue.location?.address || issue.location?.city) && (
+        <p style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#6b7280', fontSize: '0.88rem', marginBottom: '1rem' }}>
+          <span>\uD83D\uDCCD</span>
+          <span>
+            {issue.location.address
+              ? `${issue.location.address}${issue.location.city ? ` — ${issue.location.city}` : ''}`
+              : issue.location.city
+            }
+          </span>
+        </p>
+      )}
+
       <p style={{ lineHeight: 1.7, marginBottom: '1.5rem' }}>{issue.description}</p>
 
       {/* Stats */}

@@ -48,3 +48,8 @@ img, svg {
 button {
   cursor: pointer;
 }
+
+/* ─── Spinner keyframe (used by inline loading indicators) ──────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

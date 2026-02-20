@@ -140,6 +140,48 @@ export const issueService = {
   },
 
   /**
+   * Get the current user's own issues (paginated).
+   * @param {{ page?, limit?, sort?, status?, category? }} params
+   * @returns {{ issues: Issue[], pagination: Pagination }}
+   */
+  getMyIssues: async (params = {}) => {
+    const res = await api.get('/users/me/issues', { params });
+    const payload = res.data;
+    if (payload?.pagination) {
+      const p = payload.pagination;
+      payload.pagination = {
+        ...p,
+        currentPage: p.page,
+        totalPages:  p.pages,
+        hasNextPage: p.hasNext,
+        hasPrevPage: p.hasPrev,
+      };
+    }
+    return payload;
+  },
+
+  /**
+   * Get issues available for verification (Pending/Verified, not by self).
+   * @param {{ page?, limit?, sort?, category? }} params
+   * @returns {{ issues: Issue[], pagination: Pagination }}
+   */
+  getVerificationRequests: async (params = {}) => {
+    const res = await api.get('/users/me/verification-requests', { params });
+    const payload = res.data;
+    if (payload?.pagination) {
+      const p = payload.pagination;
+      payload.pagination = {
+        ...p,
+        currentPage: p.page,
+        totalPages:  p.pages,
+        hasNextPage: p.hasNext,
+        hasPrevPage: p.hasPrev,
+      };
+    }
+    return payload;
+  },
+
+  /**
    * Get admin-level stats (admin / official only).
    * @returns {{ totalPending, newToday, avgResolutionDays, categoryBreakdown }}
    */

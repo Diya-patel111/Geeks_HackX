@@ -47,8 +47,10 @@ api.interceptors.response.use(
     // Session expired → clear in-memory token and redirect
     if (status === 401) {
       _inMemoryToken = null;
-      // Avoid redirect loop if already on /login
-      if (window.location.pathname !== '/login') {
+      // Auth endpoints (login, register, /auth/me) handle 401 themselves —
+      // only force-redirect for mid-session expiry on non-auth routes.
+      const url = error.config?.url ?? '';
+      if (!url.startsWith('/auth/') && window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }

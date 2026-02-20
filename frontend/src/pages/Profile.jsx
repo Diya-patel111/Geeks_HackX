@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 import Navbar from '@components/layout/Navbar';
@@ -33,13 +33,206 @@ function BadgeChip({ icon, label }) {
   );
 }
 
+/* ── Modal shell ────────────────────────────────────────────────────────────── */
+function Modal({ title, onClose, children }) {
+  // Close on backdrop click
+  const backdropRef = useRef(null);
+  return (
+    <div
+      ref={backdropRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+      onClick={(e) => { if (e.target === backdropRef.current) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-800">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Edit Profile modal ─────────────────────────────────────────────────────── */
+function EditProfileModal({ user, onClose, onSave }) {
+  const [name,     setName]     = useState(user.name ?? '');
+  const [location, setLocation] = useState(
+    typeof user.location === 'string' ? user.location : ''
+  );
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setError('Name cannot be empty.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ name: name.trim(), ...(location.trim() && { location: location.trim() }) });
+      onClose();
+    } catch (err) {
+      setError(err?.message ?? 'Failed to update profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Edit Profile" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Full Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3b8a]/30 focus:border-[#1e3b8a] transition-colors"
+            placeholder="Your name"
+            disabled={saving}
+            autoFocus
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Location <span className="text-slate-400 font-normal">(optional)</span></label>
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3b8a]/30 focus:border-[#1e3b8a] transition-colors"
+            placeholder="e.g. Mumbai, Maharashtra"
+            disabled={saving}
+          />
+        </div>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <div className="flex gap-3 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+            disabled={saving}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="flex-1 px-4 py-2.5 bg-[#1e3b8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3b8a]/90 transition-colors disabled:opacity-60"
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ── Settings / Change-password modal ──────────────────────────────────────── */
+function SettingsModal({ onClose, onChangePassword }) {
+  const [tab,             setTab]             = useState('password');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword,     setNewPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (newPassword !== confirmPassword) { setError('New passwords do not match.'); return; }
+    if (newPassword.length < 8)          { setError('Password must be at least 8 characters.'); return; }
+    setSaving(true);
+    try {
+      await onChangePassword({ currentPassword, newPassword, confirmPassword });
+      setSuccess('Password changed successfully!');
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch (err) {
+      setError(err?.message ?? 'Failed to change password.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Account Settings" onClose={onClose}>
+      {/* Tab strip */}
+      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-5">
+        {['password'].map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
+              tab === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t === 'password' ? 'Change Password' : t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'password' && (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {[
+            { label: 'Current Password', val: currentPassword, setter: setCurrentPassword },
+            { label: 'New Password',     val: newPassword,     setter: setNewPassword     },
+            { label: 'Confirm Password', val: confirmPassword, setter: setConfirmPassword },
+          ].map(({ label, val, setter }) => (
+            <div key={label}>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
+              <input
+                type="password"
+                value={val}
+                onChange={(e) => setter(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3b8a]/30 focus:border-[#1e3b8a] transition-colors"
+                disabled={saving}
+                autoComplete="new-password"
+              />
+            </div>
+          ))}
+          {error   && <p className="text-sm text-red-500">{error}</p>}
+          {success && <p className="text-sm text-emerald-600">{success}</p>}
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+              disabled={saving}
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              className="flex-1 px-4 py-2.5 bg-[#1e3b8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3b8a]/90 transition-colors disabled:opacity-60"
+              disabled={saving}
+            >
+              {saving ? 'Updating…' : 'Update Password'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
 
   const [activity,      setActivity]      = useState([]);
   const [stats,         setStats]         = useState(null);
   const [loadingStats,  setLoadingStats]  = useState(true);
   const [loadingAct,    setLoadingAct]    = useState(true);
+  const [editOpen,      setEditOpen]      = useState(false);
+  const [settingsOpen,  setSettingsOpen]  = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -92,12 +285,18 @@ export default function Profile() {
 
               <div className="flex gap-2">
                 <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
                   className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: 16 }}>settings</span>
                   Settings
                 </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-[#1e3b8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3b8a]/90 transition-colors shadow-sm shadow-[#1e3b8a]/20">
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#1e3b8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3b8a]/90 transition-colors shadow-sm shadow-[#1e3b8a]/20"
+                >
                   <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span>
                   Edit Profile
                 </button>
@@ -109,7 +308,7 @@ export default function Profile() {
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">{user.name}</h1>
                 <p className="text-slate-500 text-sm mt-0.5">{user.email}</p>
-                {user.location && (
+                {user.location && typeof user.location === 'string' && (
                   <p className="flex items-center gap-1 text-slate-400 text-xs mt-2">
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>location_on</span>
                     {user.location}
@@ -157,14 +356,12 @@ export default function Profile() {
                 {activity.map((item, i) => (
                   <ActivityItem
                     key={item._id ?? i}
-                    type={item.type}
-                    text={item.text}
-                    issueId={item.issueId}
-                    issueTitle={item.issueTitle}
-                    badge={item.badge}
-                    badgeDesc={item.badgeDesc}
-                    status={item.status}
-                    createdAt={item.createdAt}
+                    type={item.type === 'reported' ? 'report' : (item.type ?? 'report')}
+                    text={item.type === 'reported' ? 'Reported an issue:' : 'Activity:'}
+                    issueId={String(item._id ?? '')}
+                    issueTitle={typeof item.title === 'string' ? item.title : ''}
+                    status={typeof item.status === 'string' ? item.status : undefined}
+                    createdAt={item.createdAt ?? item.date}
                     isLast={i === activity.length - 1}
                   />
                 ))}
@@ -212,6 +409,21 @@ export default function Profile() {
           </aside>
         </div>
       </main>
+
+      {/* ── Modals ── */}
+      {editOpen && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setEditOpen(false)}
+          onSave={updateProfile}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          onChangePassword={changePassword}
+        />
+      )}
 
       <Footer />
     </div>

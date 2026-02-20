@@ -86,7 +86,7 @@ export function validateFiles(files, maxCount = 5) {
  * Build a GeoJSON Point object (for issue creation).
  * @param {number} lat
  * @param {number} lng
- * @param {{ city?, address? }} meta
+ * @param {{ city?, address?, ward? }} meta
  */
 export function buildGeoPoint(lat, lng, meta = {}) {
   return {
@@ -94,4 +94,52 @@ export function buildGeoPoint(lat, lng, meta = {}) {
     coordinates: [lng, lat], // GeoJSON: [longitude, latitude]
     ...meta,
   };
+}
+
+/**
+ * Reverse geocode coordinates to a human-readable address using
+ * OpenStreetMap Nominatim (free, no API key required).
+ *
+ * Returns { city, address } strings, or empty strings on failure
+ * (never throws — location submission should not be blocked by geocoding).
+ *
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{ city: string, address: string, ward: string }>}
+ */
+export async function reverseGeocode(lat, lng) {
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/reverse` +
+      `?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+
+    const res = await fetch(url, {
+      headers: {
+        // Nominatim requires a descriptive User-Agent (fair-use policy)
+        'Accept-Language': 'en',
+        'User-Agent': 'JanAwaaz-CivicApp/1.0',
+      },
+    });
+
+    if (!res.ok) return { city: '', address: '', ward: '' };
+
+    const data = await res.json();
+    const a = data.address ?? {};
+
+    // city: prefer city → town → village → county → state_district
+    const city =
+      a.city ?? a.town ?? a.village ?? a.county ?? a.state_district ?? '';
+
+    // ward / suburb
+    const ward = a.suburb ?? a.neighbourhood ?? a.quarter ?? '';
+
+    // Short human-readable address: road + suburb/city
+    const parts = [a.road, ward || city].filter(Boolean);
+    const address = parts.length ? parts.join(', ') : (data.display_name?.split(',').slice(0, 2).join(',') ?? '');
+
+    return { city, address, ward };
+  } catch {
+    // Network failure, JSON parse error, etc. — silently degrade.
+    return { city: '', address: '', ward: '' };
+  }
 }

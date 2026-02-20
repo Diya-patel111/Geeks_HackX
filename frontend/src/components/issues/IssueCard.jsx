@@ -37,8 +37,9 @@ export default function IssueCard({
   } = issue;
 
   const coverImage = images[0]?.url ?? images[0] ?? null;
+  // Prefer specific address → city → area → fallback
   const locationLabel =
-    location?.area ?? location?.city ?? 'Unknown location';
+    location?.address ?? location?.city ?? location?.area ?? 'Unknown location';
   const isResolved = status?.toLowerCase() === 'resolved';
 
   return (

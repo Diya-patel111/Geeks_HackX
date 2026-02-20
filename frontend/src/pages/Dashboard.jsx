@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { issueService } from '@services/issueService';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 import { useIssueFeed } from '@hooks/useIssueFeed';
 import AppHeader from '@components/layout/AppHeader';
@@ -10,25 +11,26 @@ import Loader from '@components/common/Loader';
 import { SORT_PRESETS } from '@utils/constants';
 
 const HEADER_NAV = [
-  { label: 'Dashboard', to: '/dashboard', active: true },
-  { label: 'My Issues',  to: '/dashboard?mine=true'   },
-  { label: 'Statistics', to: '/dashboard?tab=stats'   },
+  { label: 'Home',                  to: '/dashboard',       icon: 'home'          },
+  { label: 'Verification Requests', to: '/verify-requests',  icon: 'verified_user' },
+  { label: 'My Issues',             to: '/my-issues',        icon: 'article'       },
+  { label: 'Profile',               to: '/profile',          icon: 'person'        },
 ];
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const navigate  = useNavigate();
 
-  const [activeCategory, setCategory]   = useState('all');
-  const [statusFilters,  setStatusFilters] = useState({ open: true, inProgress: true, resolved: false });
-  const [sort,           setSort]        = useState('recent');
+  const [activeCategory, setCategory]   = useState('');
+  const [userStats,  setUserStats]   = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  const toggleStatus = (key) =>
-    setStatusFilters((p) => ({ ...p, [key]: !p[key] }));
-
-  const activeStatuses = Object.entries(statusFilters)
-    .filter(([, on]) => on)
-    .map(([k]) => k);
+  useEffect(() => {
+    issueService.getUserStats()
+      .then(setUserStats)
+      .catch(() => {})
+      .finally(() => setStatsLoading(false));
+  }, []);
+  const [sort, setSort] = useState('recent');
 
   const {
     issues,
@@ -53,8 +55,7 @@ export default function Dashboard() {
   } = useIssueFeed(
     {
       sort,
-      category: activeCategory === 'all' ? undefined : activeCategory,
-      status:   activeStatuses.join(',') || undefined,
+      category: activeCategory || undefined,
       limit:    12,
     },
     { fetchOnMount: true },
@@ -74,8 +75,8 @@ export default function Dashboard() {
           <DashboardSidebar
             activeCategory={activeCategory}
             setCategory={setCategory}
-            statusFilters={statusFilters}
-            toggleStatus={toggleStatus}
+            userStats={userStats}
+            statsLoading={statsLoading}
           />
         </aside>
 
@@ -135,7 +136,7 @@ export default function Dashboard() {
               </div>
               <h3 className="text-lg font-semibold text-slate-700 mb-2">No issues found</h3>
               <p className="text-slate-400 text-sm mb-6">
-                {activeCategory !== 'all' ? 'Try a different category or clear filters.' : 'Be the first to report a civic issue.'}
+                {activeCategory !== '' ? 'Try a different category or clear filters.' : 'Be the first to report a civic issue.'}
               </p>
               <Link to="/issues/new" className="text-[#1e3b8a] font-semibold text-sm hover:underline">
                 + Report the first one

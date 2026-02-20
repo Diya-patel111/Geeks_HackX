@@ -12,7 +12,7 @@ import { issueService } from '@services/issueService';
  *  - Verify-modal state + submission  (openVerifyModal / handleVerifySubmit)
  *
  * @param {object} params   Query params forwarded to GET /api/v1/issues
- * @param {object} options  Options forwarded to useIssues  { fetchOnMount?, deps? }
+ * @param {object} options  Options forwarded to useIssues  { fetchOnMount?, deps?, fetcher? }
  */
 export function useIssueFeed(params = {}, options = {}) {
   // ─── Core data + pagination ──────────────────────────────────────────────
