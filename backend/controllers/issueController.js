@@ -17,7 +17,7 @@ const {
 // ─── Projection: fields needed for list views (saves bandwidth) ───────────────
 const LIST_PROJECTION =
   'title category status location.coordinates location.address location.city location.ward ' +
-  'image likeCount verificationCount averageSeverity createdAt createdBy';
+  'image images likeCount verificationCount averageSeverity createdAt createdBy';
 
 // ─── 1. Create Issue ──────────────────────────────────────────────────────────
 exports.createIssue = asyncHandler(async (req, res) => {

@@ -26,6 +26,7 @@ export default function IssueCard({
     _id,
     title      = 'Untitled Issue',
     description = '',
+    image,
     images      = [],
     status      = 'Pending',
     location,
@@ -36,7 +37,8 @@ export default function IssueCard({
     createdAt,
   } = issue;
 
-  const coverImage = images[0]?.url ?? images[0] ?? null;
+  // Primary cover: use the dedicated `image` field first, then fall back to images array
+  const coverImage = image?.url || images[0]?.url || images[0] || null;
   // Prefer specific address → city → area → fallback
   const locationLabel =
     location?.address ?? location?.city ?? location?.area ?? 'Unknown location';
