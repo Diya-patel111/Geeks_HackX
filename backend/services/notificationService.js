@@ -96,7 +96,17 @@ const notifyNearbyUsers = async (issue, radiusKm = 10) => {
           },
           timestamp: new Date(),
         };
-        io.to(user._id.toString()).emit('issue:nearby', payload);
+        io.to(`user_${user._id}`).emit('issue:nearby', payload);
+        io.to(`user_${user._id}`).emit('notification', {
+          type: 'new_issue_nearby',
+          title: 'New issue reported nearby',
+          body: payload.location.address
+            ? `"${issue.title}" near ${payload.location.address}`
+            : `"${issue.title}" was reported within ${radiusKm} km of your location.`,
+          issue: issue._id,
+          meta: payload,
+          createdAt: payload.timestamp,
+        });
       });
     }
 

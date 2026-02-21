@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '@components/common/ProtectedRoute';
 import PublicRoute    from '@components/common/PublicRoute';
 import ErrorBoundary from '@components/common/ErrorBoundary';
+import { useSocket } from '@hooks/useSocket';
 
 // Pages — lazy-loaded for code-splitting
 import { lazy, Suspense } from 'react';
@@ -20,9 +21,15 @@ const GoogleOAuthSuccess = lazy(() => import('@pages/GoogleOAuthSuccess'));
 const MyIssues               = lazy(() => import('@pages/MyIssues'));
 const VerificationRequests   = lazy(() => import('@pages/VerificationRequests'));
 
+function SocketBootstrap() {
+  useSocket();
+  return null;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
+      <SocketBootstrap />
       <Suspense fallback={<Loader fullScreen />}>
         <Routes>
           {/* ── Fully public ─────────────────────────────────────────────── */}

@@ -2,6 +2,17 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const registerHandlers = require('./socketHandlers');
 
+const COOKIE_NAME = 'civicpulse_token';
+
+const getCookieValue = (cookieHeader = '', name) => {
+  if (!cookieHeader || !name) return null;
+  const parts = cookieHeader.split(';').map((part) => part.trim());
+  const match = parts.find((part) => part.startsWith(`${name}=`));
+  if (!match) return null;
+  const [, rawValue = ''] = match.split('=');
+  return decodeURIComponent(rawValue);
+};
+
 // ─── Singleton ────────────────────────────────────────────────────────────────
 let io = null;
 
@@ -13,7 +24,8 @@ const jwtSocketMiddleware = (socket, next) => {
 
   const token =
     socket.handshake.auth?.token ||
-    socket.handshake.headers?.authorization?.replace('Bearer ', '');
+    socket.handshake.headers?.authorization?.replace('Bearer ', '') ||
+    getCookieValue(socket.handshake.headers?.cookie, COOKIE_NAME);
 
   if (!token) {
     // Allow anonymous — public feed is read-only

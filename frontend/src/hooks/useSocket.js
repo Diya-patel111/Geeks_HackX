@@ -60,17 +60,40 @@ function releaseSocket() {
  */
 export function useSocket() {
   const socketRef = useRef(null);
-  const { success } = useToast();
+  const { success, info } = useToast();
 
   useEffect(() => {
     const socket = acquireSocket();
     socketRef.current = socket;
     _refCount += 1;
 
+    const onNotification = (payload) => {
+      if (payload?.title) {
+        info(payload.title);
+      }
+    };
+
+    const onNearbyIssue = (payload) => {
+      const title = payload?.title ? `Nearby issue: ${payload.title}` : 'New issue reported nearby';
+      info(title);
+    };
+
+    const onAdminVerified = (payload) => {
+      const title = payload?.title ? `Verified issue: ${payload.title}` : 'An issue was verified';
+      success(title);
+    };
+
+    socket.on('notification', onNotification);
+    socket.on('issue:nearby', onNearbyIssue);
+    socket.on('issue:verified-admin', onAdminVerified);
+
     return () => {
+      socket.off('notification', onNotification);
+      socket.off('issue:nearby', onNearbyIssue);
+      socket.off('issue:verified-admin', onAdminVerified);
       releaseSocket();
     };
-  }, []);
+  }, [info, success]);
 
   // ─── Helper: Listen to issue:verified event ───────────────────────────────
   const onIssueVerified = useCallback((onVerified) => {
