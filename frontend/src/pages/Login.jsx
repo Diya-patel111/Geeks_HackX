@@ -350,7 +350,7 @@ export default function Login() {
               className="flex items-center justify-center gap-2 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#333' }}>account_balance</span>
-              <span className="text-sm font-medium text-slate-900 dark:text-white">GovID</span>
+              <span className="text-sm font-medium text-slate-900 dark:text-white">Admin</span>
             </button>
           </div>
 

@@ -50,7 +50,7 @@ export default function AdminLogin() {
                 />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 uppercase tracking-widest">CivicPulse</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 uppercase tracking-widest">JanAwaaz</h1>
           </div>
           <p className="text-slate-600 dark:text-slate-400 font-medium">Administrative Portal</p>
         </div>
