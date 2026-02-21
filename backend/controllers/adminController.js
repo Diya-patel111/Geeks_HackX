@@ -68,8 +68,7 @@ exports.getStats = asyncHandler(async (_req, res) => {
       users: {
         total: totalUsers,
       },
-    }),
-    'Admin statistics retrieved successfully.'
+    }, 'Admin statistics retrieved successfully.')
   );
 });
 
@@ -185,15 +184,25 @@ exports.getAllIssues = asyncHandler(async (req, res) => {
 // ─── PATCH /api/v1/admin/issues/:id/status ───────────────────────────────────
 exports.updateIssueStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const ALLOWED = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
+  const STATUS_MAP = {
+    'In Progress': 'Critical',
+    'In Working Progress': 'Critical',
+    in_progress: 'Critical',
+    in_working_progress: 'Critical',
+    issue_resolved: 'Resolved',
+    issue_rejected: 'Rejected',
+  };
 
-  if (!ALLOWED.includes(status)) {
+  const normalizedStatus = STATUS_MAP[String(status || '').trim()] || status;
+  const ALLOWED = ['Pending', 'Verified', 'Critical', 'Resolved', 'Rejected'];
+
+  if (!ALLOWED.includes(normalizedStatus)) {
     throw new ApiError(400, `Status must be one of: ${ALLOWED.join(', ')}`);
   }
 
   const issue = await Issue.findByIdAndUpdate(
     req.params.id,
-    { status, resolvedAt: status === 'Resolved' ? new Date() : undefined },
+    { status: normalizedStatus, resolvedAt: normalizedStatus === 'Resolved' ? new Date() : undefined },
     { new: true, runValidators: true }
   ).populate('createdBy', 'name email');
 
@@ -202,10 +211,10 @@ exports.updateIssueStatus = asyncHandler(async (req, res) => {
   // Emit real-time update
   try {
     const { emitStatusUpdate } = require('../socket/socketEvents');
-    emitStatusUpdate(issue._id.toString(), { status, updatedBy: req.user._id });
+    emitStatusUpdate(issue._id.toString(), { status: normalizedStatus, updatedBy: req.user._id });
   } catch { /* socket optional */ }
 
-  res.status(200).json(new ApiResponse(200, issue, `Status updated to "${status}".`));
+  res.status(200).json(new ApiResponse(200, issue, `Status updated to "${normalizedStatus}".`));
 });
 
 // ─── DELETE /api/v1/admin/issues/:id ─────────────────────────────────────────

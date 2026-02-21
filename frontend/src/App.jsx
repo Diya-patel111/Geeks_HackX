@@ -1,8 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '@components/common/ProtectedRoute';
+import ProtectedAdminRoute from '@components/common/ProtectedAdminRoute';
 import PublicRoute    from '@components/common/PublicRoute';
 import ErrorBoundary from '@components/common/ErrorBoundary';
 import { useSocket } from '@hooks/useSocket';
+import { useAuth } from '@hooks/useAuth';
 
 // Pages — lazy-loaded for code-splitting
 import { lazy, Suspense } from 'react';
@@ -13,7 +15,8 @@ const Login              = lazy(() => import('@pages/Login'));
 const Register           = lazy(() => import('@pages/Register'));
 const Dashboard          = lazy(() => import('@pages/Dashboard'));
 const Profile            = lazy(() => import('@pages/Profile'));
-const AdminPanel         = lazy(() => import('@pages/AdminPanel'));
+const AdminLogin         = lazy(() => import('@pages/admin/AdminLogin'));
+const AdminDashboard     = lazy(() => import('@pages/admin/AdminDashboard'));
 const IssueDetail        = lazy(() => import('@pages/IssueDetail'));
 const CreateIssue        = lazy(() => import('@pages/CreateIssue'));
 const NotFound           = lazy(() => import('@pages/NotFound'));
@@ -22,7 +25,8 @@ const MyIssues               = lazy(() => import('@pages/MyIssues'));
 const VerificationRequests   = lazy(() => import('@pages/VerificationRequests'));
 
 function SocketBootstrap() {
-  useSocket();
+  const { isAuthenticated, isLoading } = useAuth();
+  useSocket({ enabled: isAuthenticated && !isLoading });
   return null;
 }
 
@@ -42,6 +46,7 @@ export default function App() {
           <Route element={<PublicRoute />}>
             <Route path="/login"    element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
           </Route>
 
           {/* ── Protected — any authenticated user ───────────────────────── */}
@@ -55,8 +60,9 @@ export default function App() {
           </Route>
 
           {/* ── Admin / official only ─────────────────────────────────────── */}
-          <Route element={<ProtectedRoute roles={['admin', 'official']} />}>
-            <Route path="/admin" element={<AdminPanel />} />
+          <Route element={<ProtectedAdminRoute />}>
+            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
           </Route>
 
           {/* ── Catch-all ─────────────────────────────────────────────────── */}

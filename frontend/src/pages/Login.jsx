@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 import { validators } from '@utils/validators';
@@ -37,17 +37,17 @@ export default function Login() {
   const { user, login, register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const from = location.state?.from?.pathname || '/dashboard';
-  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
+  const modeFromQuery = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
 
   // Errors forwarded by OAuth callback redirect (?error=oauth_failed)
   const oauthError = searchParams.get('error') === 'oauth_failed'
     ? 'Google sign-in failed. Please try again or use email & password.'
     : null;
 
-  const [mode, setMode]           = useState(initialMode);
+  const [mode, setMode]           = useState(modeFromQuery);
   const [showPw, setShowPw]       = useState(false);
   const [loading, setLoading]     = useState(false);
   const [apiError, setApiError]   = useState(oauthError ?? '');
@@ -57,6 +57,18 @@ export default function Login() {
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '', role: 'citizen',
   });
+
+  useEffect(() => {
+    setMode(modeFromQuery);
+  }, [modeFromQuery]);
+
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextMode === 'signup') nextParams.set('mode', 'signup');
+    else nextParams.delete('mode');
+    setSearchParams(nextParams, { replace: true });
+  };
 
   if (user) return <Navigate to={from} replace />;
 
@@ -92,7 +104,13 @@ export default function Login() {
       if (mode === 'login') {
         await login({ email: form.email, password: form.password });
       } else {
-        await register({ name: form.name, email: form.email, password: form.password, role: form.role });
+        await register({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          confirmPassword: form.confirmPassword,
+          role: form.role,
+        });
       }
       navigate(from, { replace: true });
     } catch (err) {
@@ -157,7 +175,7 @@ export default function Login() {
               <button
                 key={m}
                 type="button"
-                onClick={() => { setMode(m); setErrors({}); setApiError(''); setNoAccount(false); }}
+                onClick={() => { switchMode(m); setErrors({}); setApiError(''); setNoAccount(false); }}
                 className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
                   mode === m
                     ? 'bg-white dark:bg-slate-700 shadow-sm text-[#1e3b8a] dark:text-white'
@@ -179,7 +197,7 @@ export default function Login() {
               {noAccount && (
                 <button
                   type="button"
-                  onClick={() => { setMode('signup'); setApiError(''); setNoAccount(false); setErrors({}); }}
+                  onClick={() => { switchMode('signup'); setApiError(''); setNoAccount(false); setErrors({}); }}
                   className="mt-2 w-full text-center bg-[#1e3b8a] text-white text-sm font-bold py-2 rounded-lg hover:bg-[#1e3b8a]/90 transition-colors"
                 >
                   Create a new account →
@@ -328,6 +346,7 @@ export default function Login() {
             </button>
             <button
               type="button"
+              onClick={() => navigate('/admin/login')}
               className="flex items-center justify-center gap-2 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#333' }}>account_balance</span>

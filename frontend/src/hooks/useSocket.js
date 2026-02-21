@@ -58,11 +58,13 @@ function releaseSocket() {
  *     return () => socket?.off('issueVerified', handler);
  *   }, [socket]);
  */
-export function useSocket() {
+export function useSocket({ enabled = true } = {}) {
   const socketRef = useRef(null);
   const { success, info } = useToast();
 
   useEffect(() => {
+    if (!enabled) return undefined;
+
     const socket = acquireSocket();
     socketRef.current = socket;
     _refCount += 1;
@@ -93,7 +95,7 @@ export function useSocket() {
       socket.off('issue:verified-admin', onAdminVerified);
       releaseSocket();
     };
-  }, [info, success]);
+  }, [enabled, info, success]);
 
   // ─── Helper: Listen to issue:verified event ───────────────────────────────
   const onIssueVerified = useCallback((onVerified) => {

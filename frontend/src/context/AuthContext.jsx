@@ -54,6 +54,17 @@ export function AuthProvider({ children }) {
   // Silently checks the httpOnly cookie with GET /auth/me.
   // If the cookie is valid the backend returns the user; otherwise 401 → CLEAR_USER.
   useEffect(() => {
+    // Skip /auth/me on admin login route where user-session bootstrap
+    // is not needed.
+
+    const path = window.location.pathname;
+    const isAdminLoginRoute = path.startsWith('/admin/login');
+
+    if (isAdminLoginRoute) {
+      dispatch({ type: AUTH_ACTIONS.CLEAR_USER });
+      return;
+    }
+
     let cancelled = false;
     authService.getMe()
       .then((user) => {

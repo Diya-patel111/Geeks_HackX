@@ -61,7 +61,8 @@ api.interceptors.response.use(
       // only force-redirect for mid-session expiry on non-auth routes.
       const url = error.config?.url ?? '';
       if (!url.startsWith('/auth/') && window.location.pathname !== '/login') {
-        window.location.href = '/login';
+        const isAdminPath = window.location.pathname.startsWith('/admin');
+        window.location.href = isAdminPath ? '/admin/login' : '/login';
       }
     }
 
