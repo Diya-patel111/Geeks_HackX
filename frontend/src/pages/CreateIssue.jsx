@@ -134,11 +134,8 @@ export default function CreateIssue() {
       fd.append('location',    locationJson);
       files.forEach((file) => fd.append('images', file));
 
-      const issue = await issueService.createIssue(fd);
-      // api.js interceptor unwraps ApiResponse → issueService returns res.data (the issue doc)
-      const issueId = issue?._id ?? issue?.data?._id;
-      if (!issueId) throw new Error('Issue created but no ID returned from server.');
-      navigate(`/issues/${issueId}`);
+      await issueService.createIssue(fd);
+      navigate('/dashboard');
     } catch (err) {
       // err.message is the backend validation message (set by api.js interceptor)
       const msg = err?.message || 'Failed to submit issue. Please try again.';

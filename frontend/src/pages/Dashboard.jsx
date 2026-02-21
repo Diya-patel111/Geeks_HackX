@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { issueService } from '@services/issueService';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
@@ -60,6 +60,16 @@ export default function Dashboard() {
     },
     { fetchOnMount: true },
   );
+
+  // ── Refetch when category filter changes (skip initial mount — fetchOnMount handles it)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    refetch({ category: activeCategory || undefined, page: 1 });
+  }, [activeCategory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-[#f6f6f8] font-display flex flex-col">

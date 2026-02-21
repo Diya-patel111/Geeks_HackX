@@ -1,5 +1,6 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
+import NotificationDropdown from './NotificationDropdown';
 
 /**
  * Top header bar for interior app pages (Dashboard, Admin).
@@ -65,9 +66,7 @@ export default function AppHeader({
           />
         </div>
 
-        <button className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 relative">
-          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>notifications</span>
-        </button>
+        <NotificationDropdown />
 
         <Link
           to="/profile"

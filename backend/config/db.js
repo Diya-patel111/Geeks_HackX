@@ -1,11 +1,15 @@
 const mongoose = require('mongoose');
 const dns = require('dns');
 
-const buildConnectOptions = () => ({
-  serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000),
-  maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE || 10),
-  family: Number(process.env.MONGO_DNS_FAMILY || 0),
-});
+const buildConnectOptions = () => {
+  const family = Number(process.env.MONGO_DNS_FAMILY || 4);
+  return {
+    serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 5000),
+    maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE || 10),
+    // Only pass `family` if it is a valid value (4 = IPv4, 6 = IPv6)
+    ...(family === 4 || family === 6 ? { family } : { family: 4 }),
+  };
+};
 
 const connectWithUri = async (uri) => {
   const conn = await mongoose.connect(uri, buildConnectOptions());

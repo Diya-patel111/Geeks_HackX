@@ -51,11 +51,11 @@ const notifyNearbyUsers = async (issue, radiusKm = 10) => {
     const radiusInRadians = radiusKm / 6378.1;
 
     // Find users within 10km radius using $geoWithin with $centerSphere
-    // Filter: isActive: true, role: "citizen", exclude issue creator
+    // Filter: isActive: true, role: user or citizen, exclude issue creator
     const nearbyUsers = await User.find({
       _id: { $ne: issue.createdBy },
       isActive: true,
-      role: 'citizen',
+      role: { $in: ['user', 'citizen'] },
       location: {
         $geoWithin: {
           $centerSphere: [[lng, lat], radiusInRadians],
